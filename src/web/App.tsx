@@ -148,6 +148,22 @@ function Scoreboard({ snapshot, compact = false }: { snapshot: GameSnapshot; com
   );
 }
 
+function DamageRail({ snapshot }: { snapshot: GameSnapshot }) {
+  if (snapshot.players.length === 0) return null;
+
+  return (
+    <div className="damage-rail" aria-label="Live player scores">
+      {snapshot.players.map((player) => (
+        <div className={`damage-rail__player ${player.connected ? '' : 'is-away'}`} key={player.id}>
+          <span className="damage-rail__rank">{player.rank}</span>
+          <strong>{player.name}</strong>
+          <em className={player.score < 0 ? 'is-negative' : ''}>{player.score.toLocaleString()}</em>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Timer({
   deadlineAt,
   openedAt,
@@ -277,12 +293,12 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
     snapshot.phase === 'lobby'
       ? { action: 'start' as const, label: 'Start the show', icon: <Play weight="fill" /> }
       : snapshot.phase === 'question'
-        ? { action: 'reveal' as const, label: 'Reveal it now', icon: <Lightning weight="fill" /> }
+        ? { action: 'reveal' as const, label: 'Call it early', icon: <Lightning weight="fill" /> }
         : snapshot.phase === 'complete'
           ? { action: 'reset' as const, label: 'Run it back', icon: <ArrowRight weight="bold" /> }
           : {
               action: 'advance' as const,
-              label: snapshot.phase === 'reveal' ? 'Next question' : 'Continue',
+              label: snapshot.phase === 'reveal' ? 'Send the next one' : 'Roll the show',
               icon: <ArrowRight weight="bold" />,
             };
 
@@ -406,6 +422,7 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                 {snapshot.question.answeredCount} / {snapshot.question.eligibleCount} LOCKED
               </strong>
             </div>
+            <DamageRail snapshot={snapshot} />
           </div>
         )}
 
@@ -460,7 +477,13 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
             ? snapshot.players.length === 0
               ? 'At least one player has to volunteer.'
               : 'Everyone in? Make it official.'
-            : `SHOW STATE · ${snapshot.phase.toUpperCase()} · REV ${snapshot.revision}`}
+            : snapshot.phase === 'question'
+              ? 'Answers lock automatically · first tap is final'
+              : snapshot.phase === 'reveal'
+                ? 'Verdict delivered · advance when the damage settles'
+                : snapshot.phase === 'intro'
+                  ? 'Opening transmission · the room is listening'
+                  : 'Final damage report'}
         </span>
         <button
           className="button button--host"

@@ -21,6 +21,7 @@
 - Active-session recovery after a complete desktop-app restart
 - Episode library and desktop file-import workflow
 - Full presentation sequencer that acknowledges audio/animation completion
+- Authored per-question poster layouts and art-direction descriptors
 - Classification round
 - Original Final Rush round
 - Dynamic winner/name roast materialization
