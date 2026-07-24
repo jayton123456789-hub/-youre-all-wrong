@@ -1,0 +1,72 @@
+{
+  "name": "youre-all-wrong",
+  "productName": "YOU'RE ALL WRONG!",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local-first, custom-episode party trivia show.",
+  "type": "module",
+  "main": "dist/desktop/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n SERVER,WEB -c magenta,cyan \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch src/server/standalone.ts",
+    "dev:web": "vite --host 0.0.0.0",
+    "dev:desktop": "npm run build:desktop && concurrently -k -n WEB,DESKTOP -c cyan,yellow \"npm:dev:web\" \"npm:dev:electron\"",
+    "dev:electron": "wait-on tcp:5173 && cross-env YAW_DEV_WEB_URL=http://127.0.0.1:5173 electron dist/desktop/main.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build:web": "vite build",
+    "build:server": "tsup src/server/standalone.ts --format esm --platform node --target node22 --out-dir dist/server --clean false",
+    "build:desktop": "tsup src/desktop/main.ts src/desktop/preload.ts src/desktop/runtime-process.ts --format cjs --platform node --target node22 --out-dir dist/desktop --external electron --clean false",
+    "build": "npm run build:web && npm run build:server && npm run build:desktop",
+    "check": "npm run format:check && npm run typecheck && npm run test && npm run build",
+    "package:win": "npm run check && tsx scripts/package-win.ts",
+    "start": "node dist/server/standalone.js",
+    "pack:demo": "tsx scripts/build-demo-showpack.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/helmet": "^13.1.0",
+    "@fastify/rate-limit": "^11.1.0",
+    "@fastify/static": "^10.1.2",
+    "@fontsource-variable/space-grotesk": "^5.2.8",
+    "@fontsource/bebas-neue": "^5.2.7",
+    "@phosphor-icons/react": "^2.1.10",
+    "fastify": "^5.10.0",
+    "fflate": "^0.8.2",
+    "nanoid": "^5.1.5",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@electron/fuses": "^1.8.0",
+    "@electron/packager": "^20.0.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^43.2.0",
+    "prettier": "^3.6.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.20.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10",
+    "wait-on": "^9.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  }
+}

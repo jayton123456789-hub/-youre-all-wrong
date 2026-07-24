@@ -1,0 +1,28 @@
+node_modules/
+dist/
+out/
+release/
+coverage/
+.vite/
+.cache/
+*.log
+*.tsbuildinfo
+
+# Local runtime data and generated voice
+.yallwrong/
+data/
+rendered-audio/
+
+# Python voice service
+services/voice/.venv/
+services/voice/__pycache__/
+services/voice/**/*.pyc
+services/voice/models/
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
