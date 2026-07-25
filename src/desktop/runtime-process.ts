@@ -3,10 +3,7 @@ import { resolve } from 'node:path';
 import { demoPack } from '../content/demo-pack.js';
 import { validateShowpack } from '../domain/showpack/validate.js';
 import { createGameServer } from '../server/app.js';
-import {
-  EpisodeVoicePreflight,
-  type VoiceRendererConfig,
-} from '../server/voice-preflight.js';
+import { EpisodeVoicePreflight, type VoiceRendererConfig } from '../server/voice-preflight.js';
 
 interface ParentMessage {
   type: 'shutdown';
@@ -21,9 +18,7 @@ async function run(): Promise<void> {
   const useChatterbox = process.env.YAW_VOICE_ENGINE?.toLowerCase() === 'chatterbox';
   const configuredWorkerPath =
     process.env.YAW_VOICE_WORKER_PATH ??
-    (useChatterbox
-      ? 'services/chatterbox-voice-worker.ps1'
-      : 'services/system-voice-worker.ps1');
+    (useChatterbox ? 'services/chatterbox-voice-worker.ps1' : 'services/system-voice-worker.ps1');
   const renderer: VoiceRendererConfig | undefined = useChatterbox
     ? {
         engineId: 'chatterbox-tts',

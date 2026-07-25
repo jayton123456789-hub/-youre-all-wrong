@@ -219,9 +219,7 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
     this.#plan = buildVoiceRenderPlan(options.pack, {
       engineId: this.#renderer.engineId,
       modelRevision: this.#renderer.modelRevision,
-      voiceProfileHash: sha256(
-        this.#renderer.voiceProfileHashSource ?? this.#renderer.voiceName,
-      ),
+      voiceProfileHash: sha256(this.#renderer.voiceProfileHashSource ?? this.#renderer.voiceName),
       deliveryPresetRevision: this.#renderer.deliveryPresetRevision,
       pronunciationRevision: this.#renderer.pronunciationRevision,
       postProcessingRevision: this.#renderer.postProcessingRevision,

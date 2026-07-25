@@ -17,9 +17,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const useChatterbox = process.env.YAW_VOICE_ENGINE?.toLowerCase() === 'chatterbox';
 const voiceWorkerPath = resolve(
   process.env.YAW_VOICE_WORKER_PATH ??
-    (useChatterbox
-      ? 'services/chatterbox-voice-worker.ps1'
-      : 'services/system-voice-worker.ps1'),
+    (useChatterbox ? 'services/chatterbox-voice-worker.ps1' : 'services/system-voice-worker.ps1'),
 );
 const voiceCacheDirectory = resolve(process.env.YAW_VOICE_CACHE_PATH ?? '.yallwrong/voice-cache');
 const renderer: VoiceRendererConfig | undefined = useChatterbox
