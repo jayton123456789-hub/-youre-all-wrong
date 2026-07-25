@@ -14,9 +14,9 @@ data/
 rendered-audio/
 
 # Python voice service
+**/__pycache__/
+**/*.pyc
 services/voice/.venv/
-services/voice/__pycache__/
-services/voice/**/*.pyc
 services/voice/models/
 
 # Editors / OS
