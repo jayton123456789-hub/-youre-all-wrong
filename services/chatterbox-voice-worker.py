@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,8 @@ def main() -> int:
     try:
         import torch
         import torchaudio
+        import transformers
+        import perth
         from chatterbox.tts import ChatterboxTTS
     except Exception as error:  # pragma: no cover - exercised on the target PC
         raise RuntimeError(
@@ -80,10 +83,21 @@ def main() -> int:
         if not Path(reference_audio).is_file():
             raise RuntimeError(f"Reference voice clip does not exist: {reference_audio}")
 
-    emit({"type": "worker-ready", "device": device})
+    emit(
+        {
+            "type": "worker-ready",
+            "device": device,
+            "torch": torch.__version__,
+            "transformers": transformers.__version__,
+            "perthPath": str(Path(perth.__file__).resolve()),
+        }
+    )
+    emit({"type": "worker-stage", "stage": "loading-model"})
     model = ChatterboxTTS.from_pretrained(device=device)
+    emit({"type": "worker-stage", "stage": "model-loaded", "sampleRate": model.sr})
 
     for job in manifest.get("jobs", []):
+        cue_id = str(job["cueId"])
         output_path = Path(str(job["outputPath"])).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         cached = output_path.is_file() and output_path.stat().st_size >= 46
@@ -103,9 +117,16 @@ def main() -> int:
             if reference_audio:
                 kwargs["audio_prompt_path"] = reference_audio
 
-            with torch.inference_mode():
-                wave = model.generate(spoken_text, **kwargs)
+            emit({"type": "worker-stage", "stage": "generating", "cueId": cue_id})
+            try:
+                with torch.inference_mode():
+                    wave = model.generate(spoken_text, **kwargs)
+            except Exception as error:
+                raise RuntimeError(
+                    f'Chatterbox failed while generating cue "{cue_id}": {error}'
+                ) from error
 
+            emit({"type": "worker-stage", "stage": "saving", "cueId": cue_id})
             temporary_path = output_path.with_name(
                 f"{output_path.stem}.part-{os.getpid()}{output_path.suffix}"
             )
@@ -120,7 +141,7 @@ def main() -> int:
             finally:
                 temporary_path.unlink(missing_ok=True)
 
-        emit({"type": "progress", "cueId": str(job["cueId"]), "cached": cached})
+        emit({"type": "progress", "cueId": cue_id, "cached": cached})
 
     return 0
 
@@ -128,6 +149,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except Exception as error:
-        print(str(error), file=sys.stderr, flush=True)
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
         raise SystemExit(1)
