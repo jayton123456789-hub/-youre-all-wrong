@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { demoPack } from '../content/demo-pack.js';
 import { validateShowpack } from '../domain/showpack/validate.js';
 import { createGameServer } from './app.js';
-import { EpisodeVoicePreflight } from './voice-preflight.js';
+import { EpisodeVoicePreflight, type VoiceRendererConfig } from './voice-preflight.js';
 
 const validated = validateShowpack(demoPack);
 if (!validated.ok) {
@@ -14,14 +14,33 @@ if (!validated.ok) {
 
 const productionWebRoot = resolve(process.cwd(), 'dist/web');
 const isProduction = process.env.NODE_ENV === 'production';
+const useChatterbox = process.env.YAW_VOICE_ENGINE?.toLowerCase() === 'chatterbox';
 const voiceWorkerPath = resolve(
-  process.env.YAW_VOICE_WORKER_PATH ?? 'services/system-voice-worker.ps1',
+  process.env.YAW_VOICE_WORKER_PATH ??
+    (useChatterbox
+      ? 'services/chatterbox-voice-worker.ps1'
+      : 'services/system-voice-worker.ps1'),
 );
 const voiceCacheDirectory = resolve(process.env.YAW_VOICE_CACHE_PATH ?? '.yallwrong/voice-cache');
+const renderer: VoiceRendererConfig | undefined = useChatterbox
+  ? {
+      engineId: 'chatterbox-tts',
+      modelRevision: 'chatterbox-tts-pip-v1',
+      deliveryPresetRevision: 'yaw-chatterbox-delivery-v1',
+      pronunciationRevision: 'whole-token-substitution-v2',
+      postProcessingRevision: 'chatterbox-native-wave-v1',
+      voiceName: process.env.YAW_CHATTERBOX_VOICE_NAME ?? 'Local Chatterbox Host',
+      voiceProfileHashSource:
+        process.env.YAW_CHATTERBOX_VOICE_ID ??
+        process.env.YAW_CHATTERBOX_REFERENCE ??
+        'chatterbox-default-voice',
+    }
+  : undefined;
 const voice = new EpisodeVoicePreflight({
   pack: validated.pack,
   cacheDirectory: voiceCacheDirectory,
   workerPath: voiceWorkerPath,
+  ...(renderer ? { renderer } : {}),
 });
 const server = await createGameServer({
   pack: validated.pack,
@@ -39,6 +58,7 @@ const started = await server.start();
 
 console.log('');
 console.log("YOU'RE ALL WRONG! runtime ready");
+console.log(`Voice: ${renderer?.voiceName ?? 'Microsoft David Desktop'}`);
 console.log(`Host: ${started.hostUrl}`);
 for (const joinUrl of started.joinUrls) {
   console.log(`Phone: ${joinUrl}`);
