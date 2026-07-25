@@ -29,6 +29,25 @@ describe('validateShowpack', () => {
     }
   });
 
+  it('reserves runtime cue IDs for generated player callouts', () => {
+    const pack = makeTestShowpack();
+    pack.episode.opening[0]!.id = 'runtime-player-callout-1';
+
+    const result = validateShowpack(pack);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'reserved_runtime_id',
+            path: '/episode/opening/0/id',
+          }),
+        ]),
+      );
+    }
+  });
+
   it('rejects a missing independent wrong-answer reaction', () => {
     const pack = makeTestShowpack();
     delete pack.episode.rounds[0]!.questions[0]!.wrongAnswerReactions['wrong-b'];
