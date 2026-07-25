@@ -102,10 +102,23 @@ def main() -> int:
             }
             if reference_audio:
                 kwargs["audio_prompt_path"] = reference_audio
-            wave = model.generate(spoken_text, **kwargs)
-            temporary_path = output_path.with_suffix(output_path.suffix + f".part-{os.getpid()}")
-            torchaudio.save(str(temporary_path), wave.cpu(), model.sr)
-            temporary_path.replace(output_path)
+
+            with torch.inference_mode():
+                wave = model.generate(spoken_text, **kwargs)
+
+            temporary_path = output_path.with_name(
+                f"{output_path.stem}.part-{os.getpid()}{output_path.suffix}"
+            )
+            try:
+                torchaudio.save(
+                    str(temporary_path),
+                    wave.detach().cpu(),
+                    model.sr,
+                    format="wav",
+                )
+                temporary_path.replace(output_path)
+            finally:
+                temporary_path.unlink(missing_ok=True)
 
         emit({"type": "progress", "cueId": str(job["cueId"]), "cached": cached})
 
