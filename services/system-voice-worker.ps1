@@ -33,9 +33,27 @@ function Apply-Pronunciation {
   foreach ($entry in $entries) {
     $written = [string]$entry.Name
     $spoken = [string]$entry.Value
-    if (-not [string]::IsNullOrWhiteSpace($spoken)) {
-      $spokenText = $spokenText.Replace($written, $spoken)
+    if ([string]::IsNullOrWhiteSpace($spoken)) {
+      continue
     }
+
+    # Match complete written tokens or phrases without accidentally replacing
+    # the same letters inside an unrelated word. The longest entries run first
+    # so an authored phrase wins over a shorter token contained inside it.
+    $escapedWritten = [System.Text.RegularExpressions.Regex]::Escape($written)
+    $pattern = "(?<![\p{L}\p{N}_])$escapedWritten(?![\p{L}\p{N}_])"
+    $options = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor `
+      [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
+    $replacement = [System.Text.RegularExpressions.MatchEvaluator]{
+      param($match)
+      return $spoken
+    }
+    $spokenText = [System.Text.RegularExpressions.Regex]::Replace(
+      $spokenText,
+      $pattern,
+      $replacement,
+      $options
+    )
   }
   return $spokenText
 }
