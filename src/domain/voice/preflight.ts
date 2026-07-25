@@ -1,6 +1,7 @@
 import type { DeliveryStyle } from '../showpack/schema.js';
 
 export type VoicePreflightState = 'preparing' | 'ready' | 'error';
+export type VoiceEngineId = 'windows-system-speech' | 'chatterbox-tts';
 
 export interface VoicePreflightStatus {
   state: VoicePreflightState;
@@ -22,7 +23,7 @@ export interface VoiceAssetManifestEntry {
 
 export interface VoiceAssetManifest {
   protocolVersion: 1;
-  engineId: 'windows-system-speech';
+  engineId: VoiceEngineId;
   voiceName: string;
   assets: VoiceAssetManifestEntry[];
 }

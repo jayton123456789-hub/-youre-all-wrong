@@ -8,16 +8,11 @@ import { createInterface } from 'node:readline';
 import type {
   VoiceAssetManifest,
   VoiceAssetManifestEntry,
+  VoiceEngineId,
   VoicePreflightStatus,
 } from '../domain/voice/preflight.js';
 import { buildVoiceRenderPlan, type PlannedLine } from '../domain/voice/render-plan.js';
 import type { Showpack } from '../domain/showpack/schema.js';
-
-const ENGINE_ID = 'windows-system-speech' as const;
-const MODEL_REVISION = 'sapi5-pcm-v1';
-const DELIVERY_PRESET_REVISION = 'yaw-system-voice-v1';
-const PRONUNCIATION_REVISION = 'literal-substitution-v1';
-const POST_PROCESSING_REVISION = 'sapi-pcm-v1';
 
 interface VoiceWorkerJob {
   cueId: string;
@@ -41,11 +36,30 @@ interface WorkerProgress {
   cached: boolean;
 }
 
+export interface VoiceRendererConfig {
+  engineId: VoiceEngineId;
+  modelRevision: string;
+  deliveryPresetRevision: string;
+  pronunciationRevision: string;
+  postProcessingRevision: string;
+  voiceName: string;
+  voiceProfileHashSource?: string;
+}
+
+const SYSTEM_VOICE_RENDERER: VoiceRendererConfig = {
+  engineId: 'windows-system-speech',
+  modelRevision: 'sapi5-pcm-v1',
+  deliveryPresetRevision: 'yaw-system-voice-v1',
+  pronunciationRevision: 'literal-substitution-v1',
+  postProcessingRevision: 'sapi-pcm-v1',
+  voiceName: 'Microsoft David Desktop',
+};
+
 export interface VoicePreflightOptions {
   pack: Showpack;
   cacheDirectory: string;
   workerPath: string;
-  voiceName?: string;
+  renderer?: VoiceRendererConfig;
   runWorker?: VoiceWorkerRunner;
 }
 
@@ -118,7 +132,7 @@ export function waveDurationMs(buffer: Buffer): number {
   return Math.max(1, Math.round((dataBytes / byteRate) * 1_000));
 }
 
-export async function runSystemVoiceWorker(
+export async function runPowerShellVoiceWorker(
   workerPath: string,
   manifestPath: string,
   onProgress: (progress: WorkerProgress) => void,
@@ -161,7 +175,7 @@ export async function runSystemVoiceWorker(
           onProgress(parsed as WorkerProgress);
         }
       } catch {
-        // PowerShell can emit benign host messages. Only typed JSON lines are protocol messages.
+        // Workers may emit startup diagnostics. Only typed JSON lines are protocol messages.
       }
     });
 
@@ -173,7 +187,7 @@ export async function runSystemVoiceWorker(
       } else {
         rejectPromise(
           new Error(
-            `Windows voice worker exited with code ${code ?? 'unknown'}.${
+            `Voice worker exited with code ${code ?? 'unknown'}.${
               stderr.trim() ? ` ${stderr.trim()}` : ''
             }`,
           ),
@@ -183,10 +197,12 @@ export async function runSystemVoiceWorker(
   });
 }
 
+export const runSystemVoiceWorker = runPowerShellVoiceWorker;
+
 export class EpisodeVoicePreflight implements VoicePreflightService {
   readonly #cacheDirectory: string;
   readonly #workerPath: string;
-  readonly #voiceName: string;
+  readonly #renderer: VoiceRendererConfig;
   readonly #plan: PlannedLine[];
   readonly #runWorker: VoiceWorkerRunner;
   readonly #listeners = new Set<VoiceStatusListener>();
@@ -198,15 +214,15 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
   constructor(options: VoicePreflightOptions) {
     this.#cacheDirectory = resolve(options.cacheDirectory);
     this.#workerPath = resolve(options.workerPath);
-    this.#voiceName = options.voiceName ?? 'Microsoft David Desktop';
-    this.#runWorker = options.runWorker ?? runSystemVoiceWorker;
+    this.#renderer = options.renderer ?? SYSTEM_VOICE_RENDERER;
+    this.#runWorker = options.runWorker ?? runPowerShellVoiceWorker;
     this.#plan = buildVoiceRenderPlan(options.pack, {
-      engineId: ENGINE_ID,
-      modelRevision: MODEL_REVISION,
-      voiceProfileHash: sha256(this.#voiceName),
-      deliveryPresetRevision: DELIVERY_PRESET_REVISION,
-      pronunciationRevision: PRONUNCIATION_REVISION,
-      postProcessingRevision: POST_PROCESSING_REVISION,
+      engineId: this.#renderer.engineId,
+      modelRevision: this.#renderer.modelRevision,
+      voiceProfileHash: sha256(this.#renderer.voiceProfileHashSource ?? this.#renderer.voiceName),
+      deliveryPresetRevision: this.#renderer.deliveryPresetRevision,
+      pronunciationRevision: this.#renderer.pronunciationRevision,
+      postProcessingRevision: this.#renderer.postProcessingRevision,
     });
     this.#status = {
       state: 'preparing',
@@ -214,7 +230,7 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
       total: this.#plan.length,
       rendered: 0,
       cached: 0,
-      voiceName: this.#voiceName,
+      voiceName: this.#renderer.voiceName,
       message: 'Preparing the host voice…',
     };
   }
@@ -283,7 +299,7 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
 
       const workerManifest: VoiceWorkerManifest = {
         protocolVersion: 1,
-        voiceName: this.#voiceName,
+        voiceName: this.#renderer.voiceName,
         jobs,
       };
       const manifestPath = join(this.#cacheDirectory, `render-${randomUUID()}.json`);
@@ -324,8 +340,8 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
 
       this.#manifest = {
         protocolVersion: 1,
-        engineId: ENGINE_ID,
-        voiceName: this.#voiceName,
+        engineId: this.#renderer.engineId,
+        voiceName: this.#renderer.voiceName,
         assets,
       };
       this.#publish({
