@@ -9,6 +9,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+$perthRevision = 'ce86c49d029f42272c1902eccb675556b9ed2330'
+
 function Test-Python311 {
   param(
     [string]$Command,
@@ -97,9 +99,19 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Failed to update pip inside the Chatterbox environment.'
 }
 
-& $python -m pip install chatterbox-tts
+& $python -m pip install chatterbox-tts==0.1.7
 if ($LASTEXITCODE -ne 0) {
   throw 'Failed to install chatterbox-tts.'
+}
+
+# Chatterbox 0.1.7 was released against a newer official Perth implementation
+# than the old 1.0.1 wheel pip may otherwise select. Pin the exact upstream
+# commit so watermarking is reproducible and matches the Chatterbox release.
+$perthRequirement = "git+https://github.com/resemble-ai/Perth.git@$perthRevision"
+Write-Host "Installing the compatible Perth watermarker ($perthRevision)..."
+& $python -m pip install --upgrade --force-reinstall --no-deps $perthRequirement
+if ($LASTEXITCODE -ne 0) {
+  throw 'Failed to install the Chatterbox-compatible Perth watermarker. Confirm Git is installed and GitHub is reachable.'
 }
 
 $resolvedBackend = $TorchBackend
@@ -122,7 +134,10 @@ $requireCuda = if ($resolvedBackend -eq 'cpu') { '0' } else { '1' }
 & $python -c @"
 import torch
 import chatterbox
+import perth
 print('Chatterbox import: OK')
+print(f'Chatterbox package: {chatterbox.__file__}')
+print(f'Perth package: {perth.__file__}')
 print(f'PyTorch: {torch.__version__}')
 print(f'CUDA build: {torch.version.cuda}')
 print(f'CUDA available: {torch.cuda.is_available()}')
@@ -139,6 +154,7 @@ Write-Host ''
 Write-Host 'Chatterbox environment is ready.'
 Write-Host "Python: $python"
 Write-Host "PyTorch backend: $resolvedBackend"
+Write-Host "Perth revision: $perthRevision"
 Write-Host ''
 Write-Host 'Set these before starting the game:'
 Write-Host '$env:YAW_VOICE_ENGINE = "chatterbox"'
