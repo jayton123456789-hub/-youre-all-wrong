@@ -28,14 +28,14 @@ export interface PlannedLine {
 }
 
 function normalizePronunciation(pronunciation: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(pronunciation)
-      .map(([written, spoken]) => [
-        written.normalize('NFKC'),
-        spoken.normalize('NFKC').replace(/\s+/gu, ' ').trim(),
-      ])
-      .sort(([writtenA], [writtenB]) => writtenA.localeCompare(writtenB)),
+  const entries: Array<[string, string]> = Object.entries(pronunciation).map(
+    ([written, spoken]): [string, string] => [
+      written.normalize('NFKC'),
+      spoken.normalize('NFKC').replace(/\s+/gu, ' ').trim(),
+    ],
   );
+  entries.sort(([writtenA], [writtenB]) => writtenA.localeCompare(writtenB));
+  return Object.fromEntries(entries);
 }
 
 function lineCacheKey(
