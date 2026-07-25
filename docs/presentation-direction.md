@@ -33,8 +33,10 @@ category bumper
 → transition
 ```
 
-The countdown must begin only when the authored narration and choice entrance
-are complete. Visuals acknowledge audio completion; live TTS never runs inside
+The 20-second countdown begins when the complete answer board appears and the
+host starts reading answer one. Buttons are live at that same moment. The first
+accepted lock interrupts any remaining answer narration without restarting or
+extending the clock. All host speech is pre-cooked; live TTS never runs inside
 this sequence.
 
 ## Question art direction
