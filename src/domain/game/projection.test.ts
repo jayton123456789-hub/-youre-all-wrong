@@ -339,6 +339,64 @@ describe('game projections', () => {
     expect(projectGame(state, pack, 'p1').presentation).toBeNull();
   });
 
+  it('keeps pre-question scores and ranks on phones until reveal finishes', () => {
+    const pack = makeTestShowpack();
+    let state = answerBoardState(pack);
+    state.players.p1!.score = 1_000;
+    state.players.p2!.score = 500;
+
+    state = run(pack, state, {
+      type: 'player.answer',
+      now: 5_000,
+      playerId: 'p1',
+      questionId: 'question-one',
+      answerId: 'wrong-b',
+      phaseToken: 'secure-phase-token',
+    });
+    state = run(pack, state, {
+      type: 'player.answer',
+      now: 6_000,
+      playerId: 'p2',
+      questionId: 'question-one',
+      answerId: 'correct-a',
+      phaseToken: 'secure-phase-token',
+    });
+    state = run(pack, state, { type: 'host.reveal', now: 7_000, reason: 'host' });
+
+    const hostReveal = projectGame(state, pack);
+    expect(hostReveal.players.map(({ id, score, rank }) => ({ id, score, rank }))).toEqual([
+      { id: 'p2', score: 1_950, rank: 1 },
+      { id: 'p1', score: 750, rank: 2 },
+    ]);
+    expect(
+      hostReveal.reveal?.standings.map(({ id, score, rank }) => ({ id, score, rank })),
+    ).toEqual([
+      { id: 'p2', score: 1_950, rank: 1 },
+      { id: 'p1', score: 750, rank: 2 },
+    ]);
+
+    for (const playerId of ['p1', 'p2']) {
+      const phoneReveal = projectGame(state, pack, playerId);
+      const expectedStandings = [
+        { id: 'p1', score: 1_000, rank: 1 },
+        { id: 'p2', score: 500, rank: 2 },
+      ];
+      expect(phoneReveal.players.map(({ id, score, rank }) => ({ id, score, rank }))).toEqual(
+        expectedStandings,
+      );
+      expect(
+        phoneReveal.reveal?.standings.map(({ id, score, rank }) => ({ id, score, rank })),
+      ).toEqual(expectedStandings);
+    }
+
+    state = run(pack, state, { type: 'host.advance', now: 8_000 });
+    const phoneFinale = projectGame(state, pack, 'p1');
+    expect(phoneFinale.players.map(({ id, score, rank }) => ({ id, score, rank }))).toEqual([
+      { id: 'p2', score: 1_950, rank: 1 },
+      { id: 'p1', score: 750, rank: 2 },
+    ]);
+  });
+
   it('omits singular winner and loser roasts when every player ties', () => {
     const pack = makeTestShowpack();
     let state = answerBoardState(pack);

@@ -12,23 +12,30 @@ function lineText(cues: CueSequence): string[] {
   return cues.filter((cue) => cue.type === 'line').map((cue) => cue.text);
 }
 
-function rankedPlayers(state: GameState): PublicPlayer[] {
+function rankedPlayers(
+  state: GameState,
+  concealedScoreDeltas?: ReadonlyMap<string, number>,
+): PublicPlayer[] {
+  const projectedScore = (playerId: string, score: number): number =>
+    score - (concealedScoreDeltas?.get(playerId) ?? 0);
   const sorted = Object.values(state.players).sort(
-    (a, b) => b.score - a.score || a.joinOrder - b.joinOrder,
+    (a, b) =>
+      projectedScore(b.id, b.score) - projectedScore(a.id, a.score) || a.joinOrder - b.joinOrder,
   );
   let previousScore: number | null = null;
   let previousRank = 0;
 
   return sorted.map((player, index) => {
-    const rank = previousScore === player.score ? previousRank : index + 1;
-    previousScore = player.score;
+    const score = projectedScore(player.id, player.score);
+    const rank = previousScore === score ? previousRank : index + 1;
+    previousScore = score;
     previousRank = rank;
     return {
       id: player.id,
       name: player.name,
       connected: player.connected,
       ready: player.ready,
-      score: player.score,
+      score,
       rank,
     };
   });
@@ -369,7 +376,13 @@ export function projectGame(
         })()
       : null;
 
-  const standings = rankedPlayers(state);
+  const concealedRevealScoreDeltas =
+    playerId !== null && state.phase === 'reveal' && state.reveal
+      ? new Map(
+          state.reveal.playerResults.map((result) => [result.playerId, result.scoreDelta] as const),
+        )
+      : undefined;
+  const standings = rankedPlayers(state, concealedRevealScoreDeltas);
   const revealProjection =
     state.phase === 'reveal' && state.reveal
       ? {
