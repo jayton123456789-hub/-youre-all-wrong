@@ -65,14 +65,16 @@ def main() -> int:
             "Chatterbox is not installed. Run services/setup-chatterbox.ps1 first."
         ) from error
 
-    requested_device = str(manifest.get("device", "auto"))
+    requested_device = os.environ.get("YAW_CHATTERBOX_DEVICE", "auto").strip().lower()
+    if requested_device not in {"auto", "cuda", "cpu"}:
+        raise RuntimeError("YAW_CHATTERBOX_DEVICE must be auto, cuda, or cpu.")
     device = "cuda" if requested_device == "auto" and torch.cuda.is_available() else requested_device
     if device == "auto":
         device = "cpu"
     if device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("Chatterbox requested CUDA, but PyTorch cannot see a CUDA GPU.")
 
-    reference_audio = manifest.get("referenceAudioPath")
+    reference_audio = os.environ.get("YAW_CHATTERBOX_REFERENCE", "").strip()
     if reference_audio:
         reference_audio = str(Path(reference_audio).resolve())
         if not Path(reference_audio).is_file():
