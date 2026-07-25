@@ -32,6 +32,7 @@ hosting.
 - Navigation limited to loopback/private addresses
 - Browser permissions denied
 - Restrictive content security policy
+- No HSTS or automatic HTTPS upgrade on the LAN-only HTTP listener
 - Authored text rendered through React text nodes, never raw HTML
 
 ## Pack controls

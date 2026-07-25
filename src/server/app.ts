@@ -177,9 +177,11 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         connectSrc: ["'self'", 'ws:', 'wss:'],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
+        upgradeInsecureRequests: null,
       },
     },
     crossOriginResourcePolicy: { policy: 'same-site' },
+    strictTransportSecurity: false,
   });
   await app.register(rateLimit, {
     max: 120,
@@ -214,6 +216,11 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       index: false,
       maxAge: '1h',
       immutable: false,
+      setHeaders: (response, filePath) => {
+        if (filePath.endsWith('index.html')) {
+          response.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+      },
     });
     app.setNotFoundHandler((request, reply) => {
       if (request.method === 'GET' && request.headers.accept?.includes('text/html')) {

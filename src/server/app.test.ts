@@ -51,6 +51,17 @@ async function testServer(): Promise<{
 }
 
 describe('LAN game server', () => {
+  it('keeps HTTP LAN assets loadable instead of forcing nonexistent HTTPS', async () => {
+    const { origin } = await testServer();
+    const response = await fetch(`${origin}/api/health`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-security-policy')).not.toContain(
+      'upgrade-insecure-requests',
+    );
+    expect(response.headers.get('strict-transport-security')).toBeNull();
+  });
+
   it('rejects a fake host secret', async () => {
     const { server, socket } = await testServer();
     const ack = await new Promise<ProtocolAck<AttachSuccess>>((resolve) => {
