@@ -110,6 +110,7 @@ const AnswerSchema = z
     id: IdSchema,
     text: z.string().trim().min(1).max(240),
     shortLabel: z.string().trim().min(1).max(32).optional(),
+    narration: CueSequenceSchema.min(1),
   })
   .strict();
 
@@ -177,10 +178,11 @@ export const QuestionSchema = z
     categoryIntro: CueSequenceSchema.default([]),
     prompt: CueSequenceSchema.min(1),
     promptText: z.string().trim().min(1).max(3_000),
-    answers: z.array(AnswerSchema).min(2).max(6),
+    answers: z.array(AnswerSchema).length(4),
     correctAnswerId: IdSchema,
     wrongAnswerReactions: z.record(IdSchema, CueSequenceSchema.min(1)),
     correctReaction: CueSequenceSchema.min(1),
+    noAnswerReaction: CueSequenceSchema.min(1),
     explanation: CueSequenceSchema.default([]),
     postQuestion: CueSequenceSchema.default([]),
     conditionalReactions: z.array(ConditionalReactionSchema).max(16).default([]),

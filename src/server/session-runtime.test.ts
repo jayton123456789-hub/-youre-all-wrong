@@ -65,6 +65,13 @@ describe('SessionRuntime', () => {
       expectedRevision: runtime.state.revision,
       action: 'advance',
     });
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'answers_presented',
+      questionId: runtime.hostSnapshot.question!.id,
+    });
     const snapshot = runtime.playerSnapshot(joined.playerId);
     now += 1_000;
     await runtime.submitAnswer(joined.playerId, {
@@ -79,6 +86,138 @@ describe('SessionRuntime', () => {
     await vi.advanceTimersByTimeAsync(700);
 
     expect(runtime.state.phase).toBe('reveal');
+    runtime.close();
+    vi.useRealTimers();
+  });
+
+  it('starts no deadline during the prompt, then runs the full window after answers appear', async () => {
+    vi.useFakeTimers();
+    let now = 1_000;
+    const runtime = new SessionRuntime({
+      pack: makeTestShowpack(),
+      packHash: 'a'.repeat(64),
+      now: () => now,
+    });
+    const joined = await runtime.join(joinInput(runtime));
+    expect(joined.ok).toBe(true);
+
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'start',
+    });
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'advance',
+    });
+
+    expect(runtime.state.currentQuestion).toMatchObject({
+      timingPhase: 'prompt',
+      deadlineAt: null,
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(runtime.state.phase).toBe('question');
+    expect(runtime.state.currentQuestion?.timingPhase).toBe('prompt');
+
+    const question = runtime.hostSnapshot.question!;
+    now = 5_000;
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'answers_presented',
+      questionId: question.id,
+    });
+
+    expect(runtime.state.currentQuestion).toMatchObject({
+      timingPhase: 'answering',
+      answerWindowOpenedAt: 5_000,
+      deadlineAt: 25_000,
+    });
+    now = 7_000;
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'answer_narration_complete',
+      questionId: question.id,
+    });
+    expect(runtime.state.currentQuestion).toMatchObject({
+      answerNarrationStatus: 'completed',
+      answerNarrationEndedAt: 7_000,
+      answerWindowOpenedAt: 5_000,
+      deadlineAt: 25_000,
+    });
+
+    now = 25_000;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(runtime.state.phase).toBe('reveal');
+    expect(runtime.state.reveal?.reason).toBe('timer');
+    runtime.close();
+    vi.useRealTimers();
+  });
+
+  it('cuts answer narration on the first lock without restarting the timer', async () => {
+    vi.useFakeTimers();
+    let now = 1_000;
+    const runtime = new SessionRuntime({
+      pack: makeTestShowpack(),
+      packHash: 'a'.repeat(64),
+      now: () => now,
+    });
+    const first = await runtime.join(joinInput(runtime, 'Riley'));
+    const second = await runtime.join(joinInput(runtime, 'Marcus'));
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok) return;
+
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'start',
+    });
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'advance',
+    });
+    now = 3_000;
+    await runtime.hostCommand({
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: runtime.state.revision,
+      action: 'answers_presented',
+      questionId: runtime.hostSnapshot.question!.id,
+    });
+    const snapshot = runtime.playerSnapshot(first.playerId);
+
+    now = 4_500;
+    const accepted = await runtime.submitAnswer(first.playerId, {
+      protocolVersion: 1,
+      commandId: randomUUID(),
+      expectedRevision: snapshot.revision,
+      questionId: snapshot.question!.id,
+      answerId: 'correct-a',
+      phaseToken: snapshot.self!.phaseToken!,
+    });
+
+    expect(accepted.ok).toBe(true);
+    expect(runtime.state.currentQuestion).toMatchObject({
+      timingPhase: 'answering',
+      answerNarrationStatus: 'interrupted',
+      answerNarrationEndedAt: 4_500,
+      answerNarrationEndReason: 'first_answer',
+      answerWindowOpenedAt: 3_000,
+      deadlineAt: 23_000,
+    });
+    expect(runtime.state.currentQuestion?.answers[first.playerId]).toMatchObject({
+      answerId: 'correct-a',
+      receivedAt: 4_500,
+    });
     runtime.close();
     vi.useRealTimers();
   });

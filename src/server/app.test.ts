@@ -12,10 +12,25 @@ import type {
 } from '../domain/protocol.js';
 import { makeTestShowpack } from '../domain/testkit/showpack.js';
 import { createGameServer, type GameServer } from './app.js';
+import type { VoicePreflightService } from './voice-preflight.js';
 
 type TestClient = ClientSocket<ServerToClientEvents, ClientToServerEvents>;
 
 const resources: Array<{ server: GameServer; sockets: TestClient[] }> = [];
+const readyVoice: VoicePreflightService = {
+  status: {
+    state: 'ready',
+    completed: 1,
+    total: 1,
+    rendered: 0,
+    cached: 1,
+    voiceName: 'Test Host',
+    message: 'Test voice is ready.',
+  },
+  manifest: null,
+  fileForCue: () => null,
+  prepare: async () => undefined,
+};
 
 afterEach(async () => {
   for (const resource of resources.splice(0)) {
@@ -34,6 +49,7 @@ async function testServer(): Promise<{
     packHash: 'a'.repeat(64),
     port: 0,
     logger: false,
+    voice: readyVoice,
   });
   const started = await server.start();
   const origin = `http://127.0.0.1:${started.port}`;
@@ -59,6 +75,7 @@ describe('LAN game server', () => {
     expect(response.headers.get('content-security-policy')).not.toContain(
       'upgrade-insecure-requests',
     );
+    expect(response.headers.get('content-security-policy')).toContain("media-src 'self' blob:");
     expect(response.headers.get('strict-transport-security')).toBeNull();
   });
 
@@ -140,9 +157,32 @@ describe('LAN game server', () => {
 
     const questionSnapshot = server.runtime.playerSnapshot(joined.playerId);
     expect(questionSnapshot.phase).toBe('question');
+    expect(questionSnapshot.question?.timingPhase).toBe('prompt');
+    expect(questionSnapshot.question?.answers).toEqual([]);
+    expect(questionSnapshot.self?.phaseToken).toBeNull();
+    expect(questionSnapshot.presentation).toBeNull();
     const serialized = JSON.stringify(questionSnapshot);
     expect(serialized).not.toContain('correctAnswerId');
     expect(serialized).not.toContain('wrongAnswerReactions');
+
+    const answersPresentedAck = await new Promise<ProtocolAck>((resolve) => {
+      host.emit(
+        'host:command',
+        {
+          protocolVersion: 1,
+          commandId: randomUUID(),
+          expectedRevision: server.runtime.state.revision,
+          action: 'answers_presented',
+          questionId: questionSnapshot.question!.id,
+        },
+        resolve,
+      );
+    });
+    expect(answersPresentedAck.ok).toBe(true);
+    expect(server.runtime.state.currentQuestion?.timingPhase).toBe('answering');
+    const answerSnapshot = server.runtime.playerSnapshot(joined.playerId);
+    expect(answerSnapshot.question?.answers).toHaveLength(4);
+    expect(answerSnapshot.self?.phaseToken).toBeTruthy();
 
     const revealPush = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Reveal push timed out.')), 3_000);
@@ -159,10 +199,10 @@ describe('LAN game server', () => {
         {
           protocolVersion: 1,
           commandId: randomUUID(),
-          expectedRevision: questionSnapshot.revision,
-          questionId: questionSnapshot.question!.id,
+          expectedRevision: answerSnapshot.revision,
+          questionId: answerSnapshot.question!.id,
           answerId: 'correct-a',
-          phaseToken: questionSnapshot.self!.phaseToken!,
+          phaseToken: answerSnapshot.self!.phaseToken!,
         },
         resolve,
       );

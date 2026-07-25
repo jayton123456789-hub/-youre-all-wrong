@@ -36,9 +36,159 @@ function openQuestion(): GameState {
   });
 }
 
+function presentAnswers(state: GameState, now = 3_000): GameState {
+  return run(state, {
+    type: 'host.answers_presented',
+    now,
+    questionId: 'question-one',
+  });
+}
+
 describe('game engine', () => {
+  it('keeps choices and answering unavailable while the prompt plays', () => {
+    const state = openQuestion();
+    const playerProjection = projectGame(state, context.pack, 'p1');
+    const hostProjection = projectGame(state, context.pack);
+
+    expect(state.currentQuestion).toMatchObject({
+      timingPhase: 'prompt',
+      openedAt: 3_000,
+      answerWindowOpenedAt: null,
+      deadlineAt: null,
+      answerNarrationStatus: 'pending',
+      answerNarrationEndedAt: null,
+      answerNarrationEndReason: null,
+    });
+    expect(playerProjection.question).toMatchObject({
+      timingPhase: 'prompt',
+      promptStartedAt: 3_000,
+      answerWindowOpenedAt: null,
+      answerWindowDeadlineAt: null,
+      answers: [],
+    });
+    expect(playerProjection.self?.phaseToken).toBeNull();
+    expect(playerProjection.presentation).toBeNull();
+    expect(hostProjection.presentation).toMatchObject({
+      kind: 'question',
+      stage: 'prompt',
+    });
+  });
+
+  it('presents all answers and opens a fresh 20-second window after the prompt', () => {
+    const state = presentAnswers(openQuestion(), 7_250);
+    const projection = projectGame(state, context.pack, 'p1');
+
+    expect(state.currentQuestion).toMatchObject({
+      timingPhase: 'answering',
+      promptEndedAt: 7_250,
+      answerWindowOpenedAt: 7_250,
+      deadlineAt: 27_250,
+      answerNarrationStatus: 'playing',
+      answerNarrationEndedAt: null,
+      answerNarrationEndReason: null,
+    });
+    expect(projection.question?.answers).toHaveLength(4);
+    expect(projection.self?.phaseToken).toBe('secure-phase-token');
+  });
+
+  it('finishes answer narration without moving the active deadline', () => {
+    let state = presentAnswers(openQuestion(), 7_250);
+    state = run(state, {
+      type: 'host.answer_narration_complete',
+      now: 10_000,
+      questionId: 'question-one',
+    });
+
+    expect(state.currentQuestion).toMatchObject({
+      timingPhase: 'answering',
+      answerWindowOpenedAt: 7_250,
+      deadlineAt: 27_250,
+      answerNarrationStatus: 'completed',
+      answerNarrationEndedAt: 10_000,
+      answerNarrationEndReason: 'completed',
+    });
+  });
+
+  it('rejects answers during the prompt', () => {
+    const state = openQuestion();
+    const answer = decideGame(context, state, {
+      type: 'player.answer',
+      now: 7_000,
+      playerId: 'p1',
+      questionId: 'question-one',
+      answerId: 'correct-a',
+      phaseToken: 'secure-phase-token',
+    });
+
+    expect(answer).toMatchObject({ ok: false, code: 'answers_not_presented' });
+  });
+
+  it('cuts only answer narration on the first lock without restarting the timer', () => {
+    let state = presentAnswers(openQuestion(), 7_000);
+    const answer = decideGame(context, state, {
+      type: 'player.answer',
+      now: 8_000,
+      playerId: 'p1',
+      questionId: 'question-one',
+      answerId: 'correct-a',
+      phaseToken: 'secure-phase-token',
+    });
+    expect(answer).toMatchObject({
+      ok: true,
+      events: [
+        { type: 'answer.accepted' },
+        {
+          type: 'question.answer_narration_ended',
+          reason: 'first_answer',
+          triggeringPlayerId: 'p1',
+        },
+      ],
+    });
+    if (!answer.ok) return;
+    state = applyEvents(state, answer.events);
+
+    expect(state.currentQuestion).toMatchObject({
+      timingPhase: 'answering',
+      answerNarrationStatus: 'interrupted',
+      answerNarrationEndedAt: 8_000,
+      answerNarrationEndReason: 'first_answer',
+      answerWindowOpenedAt: 7_000,
+      deadlineAt: 27_000,
+    });
+
+    state = run(state, {
+      type: 'player.answer',
+      now: 13_000,
+      playerId: 'p2',
+      questionId: 'question-one',
+      answerId: 'correct-a',
+      phaseToken: 'secure-phase-token',
+    });
+    const secondAttempt = decideGame(context, state, {
+      type: 'player.answer',
+      now: 13_100,
+      playerId: 'p2',
+      questionId: 'question-one',
+      answerId: 'wrong-b',
+      phaseToken: 'secure-phase-token',
+    });
+    expect(secondAttempt).toMatchObject({ ok: false, code: 'answer_locked' });
+
+    state = run(state, { type: 'host.reveal', now: 13_500, reason: 'host' });
+    expect(state.reveal?.playerResults.find((result) => result.playerId === 'p1')).toMatchObject({
+      responseMs: 1_000,
+      scoreDelta: 1_475,
+    });
+    expect(state.reveal?.playerResults.find((result) => result.playerId === 'p2')).toMatchObject({
+      responseMs: 6_000,
+      scoreDelta: 1_350,
+    });
+    expect(state.players['p1']?.score).toBe(1_475);
+    expect(state.players['p2']?.score).toBe(1_350);
+  });
+
   it('keeps scoring deterministic and integer-only', () => {
-    let state = openQuestion();
+    let state = presentAnswers(openQuestion());
     state = run(state, {
       type: 'player.answer',
       now: 8_000,
@@ -67,7 +217,7 @@ describe('game engine', () => {
   });
 
   it('locks the first accepted answer', () => {
-    let state = openQuestion();
+    let state = presentAnswers(openQuestion());
     state = run(state, {
       type: 'player.answer',
       now: 4_000,
@@ -90,7 +240,7 @@ describe('game engine', () => {
   });
 
   it('rejects stale phase tokens and late packets', () => {
-    const state = openQuestion();
+    const state = presentAnswers(openQuestion());
     const stale = decideGame(context, state, {
       type: 'player.answer',
       now: 4_000,
@@ -113,11 +263,12 @@ describe('game engine', () => {
   });
 
   it('never leaks the answer key or reactions to a player before reveal', () => {
-    const state = openQuestion();
+    const state = presentAnswers(openQuestion());
     const projection = projectGame(state, context.pack, 'p1');
     const serialized = JSON.stringify(projection);
 
-    expect(projection.question?.answers).toHaveLength(2);
+    expect(projection.question?.answers).toHaveLength(4);
+    expect(projection.presentation).toBeNull();
     expect(serialized).not.toContain('correctAnswerId');
     expect(serialized).not.toContain('wrongAnswerReactions');
     expect(serialized).not.toContain('A complete and independent wrong-answer response.');
@@ -153,24 +304,35 @@ describe('game engine', () => {
     expect(applyEvents(null, events)).toEqual(applyEvents(null, structuredClone(events)));
   });
 
+  it('recovers question events written before narration timing was introduced', () => {
+    const legacyQuestionOpened = {
+      type: 'question.opened',
+      at: 3_000,
+      currentQuestion: {
+        roundIndex: 0,
+        questionIndex: 0,
+        openedAt: 3_000,
+        deadlineAt: 23_000,
+        phaseToken: 'legacy-phase-token',
+        eligiblePlayerIds: [],
+        answers: {},
+      },
+    } as unknown as GameEvent;
+
+    const state = evolveGame(genesis(), legacyQuestionOpened);
+    expect(state.currentQuestion).toMatchObject({
+      timingPhase: 'answering',
+      promptEndedAt: 3_000,
+      answerWindowOpenedAt: 3_000,
+      deadlineAt: 23_000,
+      answerNarrationStatus: 'completed',
+      answerNarrationEndedAt: 3_000,
+      answerNarrationEndReason: 'legacy',
+    });
+  });
+
   it('plays every distinct selected wrong-answer response in deterministic answer order', () => {
     const expandedPack = makeTestShowpack();
-    const testQuestion = expandedPack.episode.rounds[0]!.questions[0]!;
-    testQuestion.answers.push({ id: 'wrong-c', text: 'Also not this one' });
-    testQuestion.wrongAnswerReactions['wrong-c'] = [
-      {
-        type: 'line',
-        id: 'question-one-wrong-c',
-        speaker: 'host',
-        text: 'A different independent wrong-answer response.',
-        delivery: 'dry',
-        pace: 1,
-        energy: 0.4,
-        pauseBeforeMs: 0,
-        pauseAfterMs: 250,
-        pronunciation: {},
-      },
-    ];
     const expandedContext = { pack: expandedPack };
     let state = genesis();
     for (const [index, playerId] of ['p1', 'p2', 'p3'].entries()) {
@@ -189,6 +351,11 @@ describe('game engine', () => {
         type: 'host.advance' as const,
         now: 3_000,
         nextPhaseToken: 'secure-phase-token',
+      },
+      {
+        type: 'host.answers_presented' as const,
+        now: 3_500,
+        questionId: 'question-one',
       },
     ]) {
       const decision = decideGame(expandedContext, state, command);
@@ -227,7 +394,7 @@ describe('game engine', () => {
         .slice(0, 2),
     ).toEqual([
       'A complete and independent wrong-answer response.',
-      'A different independent wrong-answer response.',
+      'That answer is independently wrong.',
     ]);
   });
 });

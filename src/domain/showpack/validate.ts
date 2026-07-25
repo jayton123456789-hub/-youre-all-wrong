@@ -149,7 +149,11 @@ function semanticIssues(pack: Showpack): ValidationIssue[] {
 
       inspectCues(question.categoryIntro, `${questionPath}/categoryIntro`);
       inspectCues(question.prompt, `${questionPath}/prompt`);
+      question.answers.forEach((answer, answerIndex) => {
+        inspectCues(answer.narration, `${questionPath}/answers/${answerIndex}/narration`);
+      });
       inspectCues(question.correctReaction, `${questionPath}/correctReaction`);
+      inspectCues(question.noAnswerReaction, `${questionPath}/noAnswerReaction`);
       inspectCues(question.explanation, `${questionPath}/explanation`);
       inspectCues(question.postQuestion, `${questionPath}/postQuestion`);
 

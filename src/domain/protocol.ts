@@ -58,14 +58,30 @@ export const HostAttachSchema = z
   })
   .strict();
 
-export const HostCommandSchema = z
-  .object({
-    protocolVersion: z.literal(1),
-    commandId: CommandIdSchema,
-    expectedRevision: z.number().int().min(1),
-    action: z.enum(['start', 'advance', 'reveal', 'reset']),
-  })
-  .strict();
+const HostCommandBaseSchema = z.object({
+  protocolVersion: z.literal(1),
+  commandId: CommandIdSchema,
+  expectedRevision: z.number().int().min(1),
+});
+
+const HostSimpleCommandSchema = HostCommandBaseSchema.extend({
+  action: z.enum(['start', 'advance', 'reveal', 'reset']),
+}).strict();
+
+const HostQuestionPresentationCommandSchema = HostCommandBaseSchema.extend({
+  action: z.enum([
+    'answers_presented',
+    'answer_narration_complete',
+    // Compatibility alias used by the first private timing alpha.
+    'narration_complete',
+  ]),
+  questionId: z.string().min(1).max(80),
+}).strict();
+
+export const HostCommandSchema = z.discriminatedUnion('action', [
+  HostSimpleCommandSchema,
+  HostQuestionPresentationCommandSchema,
+]);
 
 export type PlayerJoin = z.infer<typeof PlayerJoinSchema>;
 export type PlayerResume = z.infer<typeof PlayerResumeSchema>;

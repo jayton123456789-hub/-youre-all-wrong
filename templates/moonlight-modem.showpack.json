@@ -1,0 +1,909 @@
+{
+  "manifest": {
+    "format": "games.youreallwrong.showpack",
+    "formatVersion": 1,
+    "id": "moonlight-modem",
+    "title": "Moonlight Modem",
+    "author": "You're All Wrong Writers' Room",
+    "language": "en-US",
+    "createdAt": "2026-07-24T12:00:00-06:00",
+    "contentRating": "teen",
+    "minPlayers": 1,
+    "maxPlayers": 8,
+    "estimatedMinutes": 9,
+    "assets": []
+  },
+  "episode": {
+    "id": "moonlight-modem",
+    "title": "Moonlight Modem",
+    "episodeNumber": 1,
+    "opening": [
+      {
+        "type": "stage",
+        "id": "mm-opening-lights",
+        "action": "lights_shift",
+        "intensity": 0.72,
+        "durationMs": 900
+      },
+      {
+        "type": "line",
+        "id": "mm-opening-welcome",
+        "speaker": "host",
+        "text": "Welcome to You're All Wrong, tonight sponsored by One More Tab Sleep Clinic.",
+        "delivery": "announcer",
+        "pace": 0.98,
+        "energy": 0.72,
+        "pauseBeforeMs": 120,
+        "pauseAfterMs": 320,
+        "pronunciation": {}
+      },
+      {
+        "type": "line",
+        "id": "mm-opening-sponsor",
+        "speaker": "host",
+        "text": "Their revolutionary treatment is closing the laptop. Clinical trials remain stalled because nobody will volunteer.",
+        "delivery": "dry",
+        "pace": 0.96,
+        "energy": 0.48,
+        "pauseBeforeMs": 0,
+        "pauseAfterMs": 520,
+        "pronunciation": {}
+      },
+      {
+        "type": "line",
+        "id": "mm-opening-play",
+        "speaker": "host",
+        "text": "Open your minds. Close literally anything else. Let's play.",
+        "delivery": "excited",
+        "pace": 1.04,
+        "energy": 0.78,
+        "pauseBeforeMs": 0,
+        "pauseAfterMs": 500,
+        "pronunciation": {}
+      }
+    ],
+    "rounds": [
+      {
+        "type": "standard",
+        "id": "mm-round-one",
+        "title": "Signals and Bad Decisions",
+        "intro": [
+          {
+            "type": "line",
+            "id": "mm-round-one-intro",
+            "speaker": "host",
+            "text": "Round one: two triumphs of human communication, immediately handed to people who type in all caps.",
+            "delivery": "smug",
+            "pace": 1,
+            "energy": 0.62,
+            "pauseBeforeMs": 0,
+            "pauseAfterMs": 450,
+            "pronunciation": {}
+          }
+        ],
+        "questions": [
+          {
+            "id": "mm-q1",
+            "category": "THE MOON HAS TERRIBLE PING",
+            "categoryIntro": [
+              {
+                "type": "stage",
+                "id": "mm-q1-category-stage",
+                "action": "category_in",
+                "intensity": 0.68,
+                "durationMs": 620
+              },
+              {
+                "type": "line",
+                "id": "mm-q1-category-line",
+                "speaker": "host",
+                "text": "The category is: The Moon Has Terrible Ping.",
+                "delivery": "announcer",
+                "pace": 0.94,
+                "energy": 0.76,
+                "pauseBeforeMs": 80,
+                "pauseAfterMs": 380,
+                "pronunciation": {}
+              },
+              {
+                "type": "stage",
+                "id": "mm-q1-category-out",
+                "action": "category_out",
+                "intensity": 0.5,
+                "durationMs": 260
+              }
+            ],
+            "prompt": [
+              {
+                "type": "stage",
+                "id": "mm-q1-question-stage",
+                "action": "question_in",
+                "intensity": 0.62,
+                "durationMs": 480
+              },
+              {
+                "type": "line",
+                "id": "mm-q1-prompt-line",
+                "speaker": "host",
+                "text": "Game night has moved to the Moon. Ignoring computers, buffering, and your friend pretending not to see the invite, roughly how long does a radio message take to travel one way from Earth to the Moon?",
+                "delivery": "conversational",
+                "pace": 0.98,
+                "energy": 0.61,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 340,
+                "pronunciation": {}
+              },
+              {
+                "type": "stage",
+                "id": "mm-q1-answers-stage",
+                "action": "answers_in",
+                "intensity": 0.7,
+                "durationMs": 520
+              }
+            ],
+            "promptText": "Game night has moved to the Moon. Ignoring processing delays, roughly how long does a radio message take to travel one way from Earth to the Moon?",
+            "answers": [
+              {
+                "id": "mm-q1-a",
+                "text": "About 13 milliseconds",
+                "shortLabel": "13 milliseconds",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q1-a-narration",
+                    "speaker": "host",
+                    "text": "About thirteen milliseconds.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 140,
+                    "pronunciation": {}
+                  }
+                ]
+              },
+              {
+                "id": "mm-q1-b",
+                "text": "About 1.3 seconds",
+                "shortLabel": "1.3 seconds",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q1-b-narration",
+                    "speaker": "host",
+                    "text": "About one point three seconds.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 140,
+                    "pronunciation": {}
+                  }
+                ]
+              },
+              {
+                "id": "mm-q1-c",
+                "text": "About 13 minutes",
+                "shortLabel": "13 minutes",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q1-c-narration",
+                    "speaker": "host",
+                    "text": "About thirteen minutes.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 140,
+                    "pronunciation": {}
+                  }
+                ]
+              },
+              {
+                "id": "mm-q1-d",
+                "text": "About 1.3 hours",
+                "shortLabel": "1.3 hours",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q1-d-narration",
+                    "speaker": "host",
+                    "text": "About one point three hours.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 300,
+                    "pronunciation": {}
+                  }
+                ]
+              }
+            ],
+            "correctAnswerId": "mm-q1-b",
+            "wrongAnswerReactions": {
+              "mm-q1-a": [
+                {
+                  "type": "line",
+                  "id": "mm-q1-a-wrong",
+                  "speaker": "host",
+                  "text": "Thirteen milliseconds is excellent service from a nearby data center. The Moon is not hanging from your router on a very long cable.",
+                  "delivery": "disappointed",
+                  "pace": 0.97,
+                  "energy": 0.56,
+                  "pauseBeforeMs": 0,
+                  "pauseAfterMs": 360,
+                  "pronunciation": {}
+                }
+              ],
+              "mm-q1-c": [
+                {
+                  "type": "line",
+                  "id": "mm-q1-c-wrong",
+                  "speaker": "host",
+                  "text": "Thirteen minutes would move the Moon from nearby neighbor to customer-support department. Space is large, but it has not put your signal on hold.",
+                  "delivery": "smug",
+                  "pace": 0.98,
+                  "energy": 0.6,
+                  "pauseBeforeMs": 0,
+                  "pauseAfterMs": 360,
+                  "pronunciation": {}
+                }
+              ],
+              "mm-q1-d": [
+                {
+                  "type": "line",
+                  "id": "mm-q1-d-wrong",
+                  "speaker": "host",
+                  "text": "One point three hours is not signal delay. That is your friend seeing the message, looking at Earth, and deciding the Moon feels quieter without you.",
+                  "delivery": "mock_sincere",
+                  "pace": 0.94,
+                  "energy": 0.55,
+                  "pauseBeforeMs": 0,
+                  "pauseAfterMs": 440,
+                  "pronunciation": {}
+                }
+              ]
+            },
+            "correctReaction": [
+              {
+                "type": "line",
+                "id": "mm-q1-correct",
+                "speaker": "host",
+                "text": "It takes about one point three seconds. Light is fast; space has simply supplied a very long hallway.",
+                "delivery": "excited",
+                "pace": 1,
+                "energy": 0.74,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 400,
+                "pronunciation": {}
+              }
+            ],
+            "noAnswerReaction": [
+              {
+                "type": "line",
+                "id": "mm-q1-no-answer",
+                "speaker": "host",
+                "text": "Time expired. Your answer is apparently still in transit, which is a strong commitment to the premise and a weak commitment to points.",
+                "delivery": "dry",
+                "pace": 0.97,
+                "energy": 0.5,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 360,
+                "pronunciation": {}
+              }
+            ],
+            "explanation": [
+              {
+                "type": "line",
+                "id": "mm-q1-explanation",
+                "speaker": "host",
+                "text": "The Moon averages about three hundred eighty-four thousand four hundred kilometers from Earth. Divide that by the speed of light and the one-way trip is about one point two eight seconds.",
+                "delivery": "conversational",
+                "pace": 0.96,
+                "energy": 0.55,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 380,
+                "pronunciation": {}
+              }
+            ],
+            "postQuestion": [
+              {
+                "type": "line",
+                "id": "mm-q1-post-one",
+                "speaker": "host",
+                "text": "The producer says the studio gets one bar on the Moon.",
+                "delivery": "conspiratorial",
+                "pace": 0.92,
+                "energy": 0.46,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 180,
+                "pronunciation": {}
+              },
+              {
+                "type": "pause",
+                "id": "mm-q1-post-beat",
+                "durationMs": 420
+              },
+              {
+                "type": "line",
+                "id": "mm-q1-post-two",
+                "speaker": "host",
+                "text": "That is the flagpole, Dennis. Please stop holding the phone above your head.",
+                "delivery": "dry",
+                "pace": 0.94,
+                "energy": 0.49,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 500,
+                "pronunciation": {}
+              }
+            ],
+            "conditionalReactions": [
+              {
+                "id": "mm-q1-unanimous-thirteen-ms",
+                "priority": 320,
+                "when": {
+                  "kind": "unanimous_answer",
+                  "answerId": "mm-q1-a"
+                },
+                "cues": [
+                  {
+                    "type": "line",
+                    "id": "mm-q1-unanimous-line",
+                    "speaker": "host",
+                    "text": "Every player gave the Moon thirteen milliseconds. Congratulations: this room has invented faster-than-light broadband and used it exclusively for game night.",
+                    "delivery": "mock_sincere",
+                    "pace": 0.95,
+                    "energy": 0.69,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 420,
+                    "pronunciation": {}
+                  }
+                ]
+              },
+              {
+                "id": "mm-q1-solo-correct",
+                "priority": 240,
+                "when": {
+                  "kind": "solo_correct"
+                },
+                "cues": [
+                  {
+                    "type": "line",
+                    "id": "mm-q1-solo-line",
+                    "speaker": "host",
+                    "text": "One person got it. The rest of you may wave when their score passes overhead.",
+                    "delivery": "smug",
+                    "pace": 0.96,
+                    "energy": 0.63,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 360,
+                    "pronunciation": {}
+                  }
+                ]
+              }
+            ],
+            "timeLimitMs": 20000,
+            "scoring": {
+              "correct": 1000,
+              "speedBonus": 500,
+              "wrongPenalty": 250,
+              "noAnswerPenalty": 100
+            },
+            "sourceIds": ["mm-source-nasa-moon", "mm-source-nist-light"]
+          },
+          {
+            "id": "mm-q2",
+            "category": "WELCOME TO THE WORLD WIDE WAIT",
+            "categoryIntro": [
+              {
+                "type": "stage",
+                "id": "mm-q2-category-stage",
+                "action": "category_in",
+                "intensity": 0.7,
+                "durationMs": 620
+              },
+              {
+                "type": "line",
+                "id": "mm-q2-category-line",
+                "speaker": "host",
+                "text": "Your next category is: Welcome to the World Wide Wait.",
+                "delivery": "announcer",
+                "pace": 0.94,
+                "energy": 0.78,
+                "pauseBeforeMs": 80,
+                "pauseAfterMs": 380,
+                "pronunciation": {}
+              },
+              {
+                "type": "stage",
+                "id": "mm-q2-category-out",
+                "action": "category_out",
+                "intensity": 0.5,
+                "durationMs": 260
+              }
+            ],
+            "prompt": [
+              {
+                "type": "stage",
+                "id": "mm-q2-question-stage",
+                "action": "question_in",
+                "intensity": 0.64,
+                "durationMs": 480
+              },
+              {
+                "type": "line",
+                "id": "mm-q2-prompt-line",
+                "speaker": "host",
+                "text": "In nineteen ninety-one, CERN's first website was less a homepage than an instruction manual. What was its main job?",
+                "delivery": "conversational",
+                "pace": 0.98,
+                "energy": 0.62,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 340,
+                "pronunciation": {
+                  "CERN": "sern"
+                }
+              },
+              {
+                "type": "stage",
+                "id": "mm-q2-answers-stage",
+                "action": "answers_in",
+                "intensity": 0.7,
+                "durationMs": 520
+              }
+            ],
+            "promptText": "In 1991, CERN's first website was less a homepage than an instruction manual. What was its main job?",
+            "answers": [
+              {
+                "id": "mm-q2-a",
+                "text": "Sell NeXT computers",
+                "shortLabel": "Sell computers",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q2-a-narration",
+                    "speaker": "host",
+                    "text": "Sell Next computers.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 140,
+                    "pronunciation": {
+                      "Next": "next"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "mm-q2-b",
+                "text": "Explain the Web and how to use it",
+                "shortLabel": "Explain the Web",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q2-b-narration",
+                    "speaker": "host",
+                    "text": "Explain the Web and how to use it.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 140,
+                    "pronunciation": {}
+                  }
+                ]
+              },
+              {
+                "id": "mm-q2-c",
+                "text": "Stream the first office webcam",
+                "shortLabel": "Stream a webcam",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q2-c-narration",
+                    "speaker": "host",
+                    "text": "Stream the first office webcam.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 140,
+                    "pronunciation": {}
+                  }
+                ]
+              },
+              {
+                "id": "mm-q2-d",
+                "text": "Publish CERN's cafeteria menu",
+                "shortLabel": "Post the menu",
+                "narration": [
+                  {
+                    "type": "line",
+                    "id": "mm-q2-d-narration",
+                    "speaker": "host",
+                    "text": "Publish CERN's cafeteria menu.",
+                    "delivery": "conversational",
+                    "pace": 1,
+                    "energy": 0.54,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 300,
+                    "pronunciation": {
+                      "CERN": "sern"
+                    }
+                  }
+                ]
+              }
+            ],
+            "correctAnswerId": "mm-q2-b",
+            "wrongAnswerReactions": {
+              "mm-q2-a": [
+                {
+                  "type": "line",
+                  "id": "mm-q2-a-wrong",
+                  "speaker": "host",
+                  "text": "The first web server ran on a NeXT computer, but the page was not a sales funnel. Humanity had not yet learned to make every rectangle demand a credit card.",
+                  "delivery": "smug",
+                  "pace": 0.97,
+                  "energy": 0.59,
+                  "pauseBeforeMs": 0,
+                  "pauseAfterMs": 400,
+                  "pronunciation": {}
+                }
+              ],
+              "mm-q2-c": [
+                {
+                  "type": "line",
+                  "id": "mm-q2-c-wrong",
+                  "speaker": "host",
+                  "text": "A famous early webcam watched a coffee pot at Cambridge, but that was not the first website's purpose. Even the young internet knew surveillance should begin with office beverages.",
+                  "delivery": "dry",
+                  "pace": 0.96,
+                  "energy": 0.54,
+                  "pauseBeforeMs": 0,
+                  "pauseAfterMs": 420,
+                  "pronunciation": {}
+                }
+              ],
+              "mm-q2-d": [
+                {
+                  "type": "line",
+                  "id": "mm-q2-d-wrong",
+                  "speaker": "host",
+                  "text": "The first website was not a cafeteria menu. Scientists had split the atom, connected the planet, and still possessed the restraint not to upload Thursday's soup.",
+                  "delivery": "mock_sincere",
+                  "pace": 0.95,
+                  "energy": 0.57,
+                  "pauseBeforeMs": 0,
+                  "pauseAfterMs": 420,
+                  "pronunciation": {}
+                }
+              ]
+            },
+            "correctReaction": [
+              {
+                "type": "line",
+                "id": "mm-q2-correct",
+                "speaker": "host",
+                "text": "It explained the World Wide Web project and told visitors how to use and contribute to it.",
+                "delivery": "excited",
+                "pace": 1,
+                "energy": 0.73,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 380,
+                "pronunciation": {}
+              }
+            ],
+            "noAnswerReaction": [
+              {
+                "type": "line",
+                "id": "mm-q2-no-answer",
+                "speaker": "host",
+                "text": "No answer. You have recreated the authentic nineteen ninety-one browsing experience: a blank screen and no idea what to click.",
+                "delivery": "dry",
+                "pace": 0.96,
+                "energy": 0.51,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 400,
+                "pronunciation": {}
+              }
+            ],
+            "explanation": [
+              {
+                "type": "line",
+                "id": "mm-q2-explanation",
+                "speaker": "host",
+                "text": "CERN describes the first site as information about the World Wide Web project, including how to create pages and find servers. It was documentation for the thing that would eventually bury us in cookie banners.",
+                "delivery": "conversational",
+                "pace": 0.96,
+                "energy": 0.58,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 420,
+                "pronunciation": {
+                  "CERN": "sern"
+                }
+              }
+            ],
+            "postQuestion": [
+              {
+                "type": "line",
+                "id": "mm-q2-post",
+                "speaker": "host",
+                "text": "The first website taught people how the Web worked. The modern Web asks whether you accept all cookies before showing you a recipe. Progress has layers.",
+                "delivery": "smug",
+                "pace": 0.95,
+                "energy": 0.59,
+                "pauseBeforeMs": 0,
+                "pauseAfterMs": 500,
+                "pronunciation": {}
+              }
+            ],
+            "conditionalReactions": [
+              {
+                "id": "mm-q2-all-correct",
+                "priority": 300,
+                "when": {
+                  "kind": "all_correct"
+                },
+                "cues": [
+                  {
+                    "type": "line",
+                    "id": "mm-q2-all-correct-line",
+                    "speaker": "host",
+                    "text": "Everyone got it. For one beautiful moment, the internet has improved a room instead of starting an argument in it.",
+                    "delivery": "mock_sincere",
+                    "pace": 0.93,
+                    "energy": 0.67,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 420,
+                    "pronunciation": {}
+                  }
+                ]
+              },
+              {
+                "id": "mm-q2-fast-correct",
+                "priority": 180,
+                "when": {
+                  "kind": "fast_answer",
+                  "answerId": "mm-q2-b",
+                  "withinMs": 1800
+                },
+                "cues": [
+                  {
+                    "type": "line",
+                    "id": "mm-q2-fast-correct-line",
+                    "speaker": "host",
+                    "text": "Somebody answered that before a modern webpage could finish loading its consent manager.",
+                    "delivery": "excited",
+                    "pace": 1.05,
+                    "energy": 0.72,
+                    "pauseBeforeMs": 0,
+                    "pauseAfterMs": 360,
+                    "pronunciation": {}
+                  }
+                ]
+              }
+            ],
+            "timeLimitMs": 20000,
+            "scoring": {
+              "correct": 1200,
+              "speedBonus": 600,
+              "wrongPenalty": 300,
+              "noAnswerPenalty": 100
+            },
+            "sourceIds": ["mm-source-cern-web"]
+          }
+        ],
+        "outro": [
+          {
+            "type": "stage",
+            "id": "mm-round-one-scoreboard",
+            "action": "scoreboard_in",
+            "intensity": 0.66,
+            "durationMs": 700
+          },
+          {
+            "type": "line",
+            "id": "mm-round-one-outro",
+            "speaker": "host",
+            "text": "That concludes the educational portion. Please enjoy the brief sensation that something entered your brain and paid rent.",
+            "delivery": "dry",
+            "pace": 0.95,
+            "energy": 0.52,
+            "pauseBeforeMs": 0,
+            "pauseAfterMs": 520,
+            "pronunciation": {}
+          },
+          {
+            "type": "stage",
+            "id": "mm-round-one-scoreboard-out",
+            "action": "scoreboard_out",
+            "intensity": 0.55,
+            "durationMs": 420
+          }
+        ]
+      }
+    ],
+    "finale": {
+      "id": "mm-finale",
+      "calmLeadIn": [
+        {
+          "type": "stage",
+          "id": "mm-finale-scoreboard",
+          "action": "scoreboard_in",
+          "intensity": 0.78,
+          "durationMs": 900
+        },
+        {
+          "type": "line",
+          "id": "mm-finale-calm-one",
+          "speaker": "host",
+          "text": "And after all that, the final scores reveal something genuinely remarkable.",
+          "delivery": "mock_sincere",
+          "pace": 0.84,
+          "energy": 0.38,
+          "pauseBeforeMs": 180,
+          "pauseAfterMs": 360,
+          "pronunciation": {}
+        },
+        {
+          "type": "line",
+          "id": "mm-finale-calm-two",
+          "speaker": "host",
+          "text": "Different points. Different mistakes. One shared diagnosis.",
+          "delivery": "conspiratorial",
+          "pace": 0.82,
+          "energy": 0.42,
+          "pauseBeforeMs": 0,
+          "pauseAfterMs": 280,
+          "pronunciation": {}
+        },
+        {
+          "type": "pause",
+          "id": "mm-finale-silence",
+          "durationMs": 1250
+        },
+        {
+          "type": "stage",
+          "id": "mm-finale-blackout",
+          "action": "blackout",
+          "intensity": 1,
+          "durationMs": 320
+        }
+      ],
+      "titleDrop": [
+        {
+          "type": "stage",
+          "id": "mm-finale-logo",
+          "action": "logo_slam",
+          "intensity": 1,
+          "durationMs": 520
+        },
+        {
+          "type": "stage",
+          "id": "mm-finale-shake",
+          "action": "screen_shake",
+          "intensity": 0.9,
+          "durationMs": 460
+        },
+        {
+          "type": "line",
+          "id": "mm-finale-title-line",
+          "speaker": "host",
+          "text": "YOU'RE! ALL! WROOOONG!",
+          "delivery": "finale_shout",
+          "pace": 0.82,
+          "energy": 1,
+          "pauseBeforeMs": 0,
+          "pauseAfterMs": 720,
+          "pronunciation": {}
+        }
+      ],
+      "outro": [
+        {
+          "type": "stage",
+          "id": "mm-finale-lights-return",
+          "action": "lights_shift",
+          "intensity": 0.74,
+          "durationMs": 700
+        },
+        {
+          "type": "line",
+          "id": "mm-finale-outro-line",
+          "speaker": "host",
+          "text": "The scores are official, the facts are exhausted, and the Moon has blocked our number. Good night.",
+          "delivery": "smug",
+          "pace": 0.93,
+          "energy": 0.61,
+          "pauseBeforeMs": 0,
+          "pauseAfterMs": 700,
+          "pronunciation": {}
+        }
+      ],
+      "winnerRoasts": [
+        [
+          {
+            "type": "line",
+            "id": "mm-winner-roast-one",
+            "speaker": "host",
+            "text": "First place: proof that a person can rise above this room without necessarily clearing sea level.",
+            "delivery": "mock_sincere",
+            "pace": 0.95,
+            "energy": 0.59,
+            "pauseBeforeMs": 0,
+            "pauseAfterMs": 420,
+            "pronunciation": {}
+          }
+        ],
+        [
+          {
+            "type": "line",
+            "id": "mm-winner-roast-two",
+            "speaker": "host",
+            "text": "Our winner knew the most, guessed the best, or held the phone correctly. History will flatten those distinctions.",
+            "delivery": "smug",
+            "pace": 0.96,
+            "energy": 0.61,
+            "pauseBeforeMs": 0,
+            "pauseAfterMs": 420,
+            "pronunciation": {}
+          }
+        ]
+      ],
+      "loserRoasts": [
+        [
+          {
+            "type": "line",
+            "id": "mm-loser-roast-one",
+            "speaker": "host",
+            "text": "Last place has achieved the intellectual equivalent of buffering at one hundred percent.",
+            "delivery": "disappointed",
+            "pace": 0.92,
+            "energy": 0.53,
+            "pauseBeforeMs": 0,
+            "pauseAfterMs": 420,
+            "pronunciation": {}
+          }
+        ],
+        [
+          {
+            "type": "line",
+            "id": "mm-loser-roast-two",
+            "speaker": "host",
+            "text": "The lowest score will remain here for further testing. We need to know whether the number is contagious.",
+            "delivery": "dry",
+            "pace": 0.93,
+            "energy": 0.51,
+            "pauseBeforeMs": 0,
+            "pauseAfterMs": 420,
+            "pronunciation": {}
+          }
+        ]
+      ]
+    },
+    "sources": [
+      {
+        "id": "mm-source-nasa-moon",
+        "title": "Moon Facts",
+        "url": "https://science.nasa.gov/moon/facts/",
+        "publisher": "NASA Science",
+        "accessedOn": "2026-07-24"
+      },
+      {
+        "id": "mm-source-nist-light",
+        "title": "CODATA Value: Speed of Light in Vacuum",
+        "url": "https://physics.nist.gov/cgi-bin/cuu/Value?c",
+        "publisher": "National Institute of Standards and Technology",
+        "accessedOn": "2026-07-24"
+      },
+      {
+        "id": "mm-source-cern-web",
+        "title": "A Short History of the Web",
+        "url": "https://home.cern/science/computing/the-birth-of-the-web/short-history-web/",
+        "publisher": "CERN",
+        "accessedOn": "2026-07-24"
+      }
+    ]
+  }
+}

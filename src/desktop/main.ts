@@ -87,6 +87,9 @@ function startRuntime(window: BrowserWindow): void {
   const runtimeEntry = join(__dirname, 'runtime-process.cjs');
   const isDevelopment = Boolean(process.env.YAW_DEV_WEB_URL);
   const webRoot = join(app.getAppPath(), 'dist', 'web');
+  const voiceWorkerPath = app.isPackaged
+    ? join(process.resourcesPath, 'system-voice-worker.ps1')
+    : join(app.getAppPath(), 'services', 'system-voice-worker.ps1');
 
   runtimeProcess = utilityProcess.fork(runtimeEntry, [], {
     serviceName: "YOU'RE ALL WRONG! Runtime",
@@ -99,6 +102,8 @@ function startRuntime(window: BrowserWindow): void {
       YAW_SESSION_CODE: runtimeIdentity.code,
       YAW_HOST_SECRET: runtimeIdentity.hostSecret,
       YAW_JOIN_SECRET: runtimeIdentity.joinSecret,
+      YAW_VOICE_CACHE_PATH: join(app.getPath('userData'), 'voice-cache'),
+      YAW_VOICE_WORKER_PATH: voiceWorkerPath,
       ...(isDevelopment
         ? { YAW_PUBLIC_WEB_PORT: new URL(process.env.YAW_DEV_WEB_URL!).port || '5173' }
         : { YAW_WEB_ROOT: webRoot }),

@@ -52,7 +52,9 @@ function collectSequences(pack: Showpack): Cue[][] {
       sequences.push(
         question.categoryIntro,
         question.prompt,
+        ...question.answers.map((answer) => answer.narration),
         question.correctReaction,
+        question.noAnswerReaction,
         question.explanation,
         question.postQuestion,
         ...Object.values(question.wrongAnswerReactions),

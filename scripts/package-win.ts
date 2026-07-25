@@ -17,6 +17,7 @@ const packagePaths = await packager({
   asar: true,
   prune: true,
   icon: resolve(projectRoot, 'assets/branding/app-icon.ico'),
+  extraResource: [resolve(projectRoot, 'services/system-voice-worker.ps1')],
   ignore: [
     /^\/\.git(?:\/|$)/,
     /^\/\.github(?:\/|$)/,

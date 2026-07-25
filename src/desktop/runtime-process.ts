@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { demoPack } from '../content/demo-pack.js';
 import { validateShowpack } from '../domain/showpack/validate.js';
 import { createGameServer } from '../server/app.js';
+import { EpisodeVoicePreflight } from '../server/voice-preflight.js';
 
 interface ParentMessage {
   type: 'shutdown';
@@ -14,6 +15,14 @@ async function run(): Promise<void> {
     throw new Error(`Bundled episode is invalid: ${JSON.stringify(validation.issues)}`);
   }
 
+  const voice =
+    process.env.YAW_VOICE_CACHE_PATH && process.env.YAW_VOICE_WORKER_PATH
+      ? new EpisodeVoicePreflight({
+          pack: validation.pack,
+          cacheDirectory: resolve(process.env.YAW_VOICE_CACHE_PATH),
+          workerPath: resolve(process.env.YAW_VOICE_WORKER_PATH),
+        })
+      : undefined;
   const server = await createGameServer({
     pack: validation.pack,
     packHash: validation.packHash,
@@ -30,6 +39,7 @@ async function run(): Promise<void> {
     ...(process.env.YAW_SESSION_CODE ? { code: process.env.YAW_SESSION_CODE } : {}),
     ...(process.env.YAW_HOST_SECRET ? { hostSecret: process.env.YAW_HOST_SECRET } : {}),
     ...(process.env.YAW_JOIN_SECRET ? { joinSecret: process.env.YAW_JOIN_SECRET } : {}),
+    ...(voice ? { voice } : {}),
   });
   const started = await server.start();
 

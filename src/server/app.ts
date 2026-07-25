@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -27,6 +27,7 @@ import {
 import type { Showpack } from '../domain/showpack/schema.js';
 import { SqliteEventStore } from './event-store.js';
 import { SessionRuntime } from './session-runtime.js';
+import type { VoicePreflightService } from './voice-preflight.js';
 
 const PROTOCOL_VERSION = 1;
 const SOCKET_PATH = '/realtime';
@@ -59,6 +60,7 @@ export interface GameServerOptions {
   webRoot?: string;
   databasePath?: string;
   logger?: boolean;
+  voice?: VoicePreflightService;
 }
 
 export interface StartedGameServer {
@@ -151,6 +153,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
               paths: [
                 'req.headers.authorization',
                 'req.headers.cookie',
+                'req.headers.x-yaw-host-key',
                 '*.hostSecret',
                 '*.joinSecret',
                 '*.resumeToken',
@@ -174,6 +177,9 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:'],
         fontSrc: ["'self'", 'data:'],
+        // The host eagerly downloads every cooked WAV and plays it from an
+        // in-memory object URL. Keep that preload architecture CSP-safe.
+        mediaSrc: ["'self'", 'blob:'],
         connectSrc: ["'self'", 'ws:', 'wss:'],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
@@ -184,7 +190,9 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     strictTransportSecurity: false,
   });
   await app.register(rateLimit, {
-    max: 120,
+    // A host intentionally preloads every authored voice clip before Start unlocks.
+    // Full episodes can contain hundreds of clips, all protected by the host secret.
+    max: 2_000,
     timeWindow: '1 minute',
     keyGenerator: (request) => request.ip,
   });
@@ -207,6 +215,57 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       title: runtime.pack.episode.title,
     },
   }));
+
+  const hostKey = (header: string | string[] | undefined): string =>
+    Array.isArray(header) ? (header[0] ?? '') : (header ?? '');
+  const authorizeVoiceRequest = (header: string | string[] | undefined): boolean =>
+    runtime.verifyHostSecret(hostKey(header));
+
+  app.get('/api/voice/status', async (request, reply) => {
+    if (!authorizeVoiceRequest(request.headers['x-yaw-host-key'])) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    if (!options.voice) {
+      return reply.code(503).send({
+        state: 'error',
+        completed: 0,
+        total: 0,
+        rendered: 0,
+        cached: 0,
+        voiceName: 'Unavailable',
+        message: 'This runtime was launched without a local voice renderer.',
+      });
+    }
+    return options.voice.status;
+  });
+
+  app.get('/api/voice/manifest', async (request, reply) => {
+    if (!authorizeVoiceRequest(request.headers['x-yaw-host-key'])) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    const manifest = options.voice?.manifest;
+    if (!manifest) {
+      return reply.code(409).send({
+        error: 'voice_not_ready',
+        status: options.voice?.status ?? null,
+      });
+    }
+    return manifest;
+  });
+
+  app.get<{ Params: { cueId: string } }>('/api/voice/audio/:cueId', async (request, reply) => {
+    if (!authorizeVoiceRequest(request.headers['x-yaw-host-key'])) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    const path = options.voice?.fileForCue(request.params.cueId);
+    if (!path || !existsSync(path)) {
+      return reply.code(404).send({ error: 'voice_asset_not_found' });
+    }
+    return reply
+      .header('Cache-Control', 'private, max-age=31536000, immutable')
+      .type('audio/wav')
+      .send(createReadStream(path));
+  });
 
   const resolvedWebRoot = options.webRoot ? resolve(options.webRoot) : null;
   if (resolvedWebRoot && existsSync(resolve(resolvedWebRoot, 'index.html'))) {
@@ -342,6 +401,18 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         acknowledge(badRequest(parsed.error));
         return;
       }
+      if (parsed.data.action === 'start' && options.voice?.status.state !== 'ready') {
+        acknowledge({
+          ok: false,
+          code: 'command_rejected',
+          message:
+            options.voice?.status.message ??
+            'The show cannot start without a fully pre-cooked local voice track.',
+          retryable: true,
+          currentRevision: runtime.state.revision,
+        });
+        return;
+      }
       acknowledge(await runtime.hostCommand(parsed.data));
     });
 
@@ -472,6 +543,14 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         )}&runtime=${encodeURIComponent(`http://127.0.0.1:${port}`)}`,
         joinUrls: currentJoinUrls(),
       };
+      if (options.voice) {
+        void options.voice.prepare().catch((error: unknown) => {
+          app.log.error(
+            { error: error instanceof Error ? error.message : String(error) },
+            'Episode voice preflight failed.',
+          );
+        });
+      }
       return started;
     },
     async stop() {

@@ -1,6 +1,7 @@
 import type { CueSequence, Question } from '../showpack/schema.js';
 import {
   type DecisionResult,
+  type CurrentQuestionState,
   type GameCommand,
   type GameContext,
   type GameEvent,
@@ -24,21 +25,68 @@ function currentQuestion(context: GameContext, state: GameState): Question | nul
   return context.pack.episode.rounds[pointer.roundIndex]?.questions[pointer.questionIndex] ?? null;
 }
 
-function firstQuestion(context: GameContext, now: number, phaseToken: string, state: GameState) {
-  const question = context.pack.episode.rounds[0]?.questions[0];
-  if (!question) throw new Error('Validated episodes must contain at least one question.');
-
+function questionState(
+  state: GameState,
+  roundIndex: number,
+  questionIndex: number,
+  now: number,
+  phaseToken: string,
+): CurrentQuestionState {
   return {
-    roundIndex: 0,
-    questionIndex: 0,
+    roundIndex,
+    questionIndex,
+    timingPhase: 'prompt',
     openedAt: now,
-    deadlineAt: now + question.timeLimitMs,
+    promptEndedAt: null,
+    answerWindowOpenedAt: null,
+    deadlineAt: null,
+    answerNarrationStatus: 'pending',
+    answerNarrationEndedAt: null,
+    answerNarrationEndReason: null,
     phaseToken,
     eligiblePlayerIds: Object.values(state.players)
       .filter((player) => player.connected)
       .sort((a, b) => a.joinOrder - b.joinOrder)
       .map((player) => player.id),
     answers: {},
+  };
+}
+
+function firstQuestion(context: GameContext, now: number, phaseToken: string, state: GameState) {
+  const question = context.pack.episode.rounds[0]?.questions[0];
+  if (!question) throw new Error('Validated episodes must contain at least one question.');
+  return questionState(state, 0, 0, now, phaseToken);
+}
+
+function answersPresentedEvent(
+  question: Question,
+  pointer: CurrentQuestionState,
+  now: number,
+): Extract<GameEvent, { type: 'question.answers_presented' }> {
+  return {
+    type: 'question.answers_presented',
+    at: now,
+    questionId: question.id,
+    phaseToken: pointer.phaseToken,
+    openedAt: now,
+    deadlineAt: now + question.timeLimitMs,
+  };
+}
+
+function answerNarrationEndedEvent(
+  question: Question,
+  pointer: CurrentQuestionState,
+  now: number,
+  reason: 'completed' | 'first_answer',
+  triggeringPlayerId?: string,
+): Extract<GameEvent, { type: 'question.answer_narration_ended' }> {
+  return {
+    type: 'question.answer_narration_ended',
+    at: now,
+    questionId: question.id,
+    phaseToken: pointer.phaseToken,
+    reason,
+    ...(triggeringPlayerId === undefined ? {} : { triggeringPlayerId }),
   };
 }
 
@@ -171,6 +219,13 @@ function buildReveal(
   const pointer = state.currentQuestion;
   const question = currentQuestion(context, state);
   if (!pointer || !question) throw new Error('Cannot reveal without a current question.');
+  if (
+    pointer.timingPhase !== 'answering' ||
+    pointer.answerWindowOpenedAt === null ||
+    pointer.deadlineAt === null
+  ) {
+    throw new Error('Cannot reveal before the timed answer window opens.');
+  }
 
   const answerCounts = Object.fromEntries(question.answers.map((answer) => [answer.id, 0]));
   const ledger: ScoreLedgerEntry[] = [];
@@ -183,7 +238,9 @@ function buildReveal(
     const submission = pointer.answers[playerId];
     const answerId = submission?.answerId ?? null;
     const correct = answerId === question.correctAnswerId;
-    const responseMs = submission ? Math.max(0, submission.receivedAt - pointer.openedAt) : null;
+    const responseMs = submission
+      ? Math.max(0, submission.receivedAt - pointer.answerWindowOpenedAt)
+      : null;
     let scoreDelta = 0;
 
     if (answerId !== null) {
@@ -191,7 +248,7 @@ function buildReveal(
     }
 
     if (correct && responseMs !== null) {
-      const duration = pointer.deadlineAt - pointer.openedAt;
+      const duration = pointer.deadlineAt - pointer.answerWindowOpenedAt;
       const remaining = Math.max(0, pointer.deadlineAt - (submission?.receivedAt ?? now));
       const speedPoints = integerTimeBonus(question.scoring.speedBonus, remaining, duration);
       scoreDelta = question.scoring.correct + speedPoints;
@@ -392,18 +449,13 @@ export function decideGame(
             {
               type: 'question.opened',
               at: command.now,
-              currentQuestion: {
-                roundIndex: next.roundIndex,
-                questionIndex: next.questionIndex,
-                openedAt: command.now,
-                deadlineAt: command.now + next.question.timeLimitMs,
-                phaseToken: command.nextPhaseToken,
-                eligiblePlayerIds: Object.values(state.players)
-                  .filter((player) => player.connected)
-                  .sort((a, b) => a.joinOrder - b.joinOrder)
-                  .map((player) => player.id),
-                answers: {},
-              },
+              currentQuestion: questionState(
+                state,
+                next.roundIndex,
+                next.questionIndex,
+                command.now,
+                command.nextPhaseToken,
+              ),
             },
           ],
         };
@@ -414,6 +466,47 @@ export function decideGame(
       }
 
       return reject('invalid_phase', `Cannot advance while the game is in "${state.phase}".`);
+    }
+
+    case 'host.answers_presented': {
+      if (state.phase !== 'question' || !state.currentQuestion) {
+        return reject('invalid_phase', 'There is no question prompt awaiting its answer board.');
+      }
+      const question = currentQuestion(context, state);
+      if (!question || command.questionId !== question.id) {
+        return reject('stale_question', 'That answer board belongs to a different question.');
+      }
+      if (state.currentQuestion.timingPhase !== 'prompt') {
+        return reject('invalid_phase', 'The answers have already been presented.');
+      }
+
+      return {
+        ok: true,
+        events: [answersPresentedEvent(question, state.currentQuestion, command.now)],
+      };
+    }
+
+    case 'host.answer_narration_complete': {
+      if (state.phase !== 'question' || !state.currentQuestion) {
+        return reject('invalid_phase', 'There is no answer narration to complete.');
+      }
+      const question = currentQuestion(context, state);
+      if (!question || command.questionId !== question.id) {
+        return reject('stale_question', 'That answer narration belongs to a different question.');
+      }
+      if (
+        state.currentQuestion.timingPhase !== 'answering' ||
+        state.currentQuestion.answerNarrationStatus !== 'playing'
+      ) {
+        return reject('invalid_phase', 'The answer narration is not playing.');
+      }
+
+      return {
+        ok: true,
+        events: [
+          answerNarrationEndedEvent(question, state.currentQuestion, command.now, 'completed'),
+        ],
+      };
     }
 
     case 'player.answer': {
@@ -430,6 +523,18 @@ export function decideGame(
       if (command.phaseToken !== state.currentQuestion.phaseToken) {
         return reject('stale_phase', 'That answer window is no longer active.');
       }
+      if (state.currentQuestion.timingPhase !== 'answering') {
+        return reject(
+          'answers_not_presented',
+          'Wait until the answer choices appear before locking an answer.',
+        );
+      }
+      if (
+        state.currentQuestion.answerWindowOpenedAt === null ||
+        state.currentQuestion.deadlineAt === null
+      ) {
+        return reject('answer_closed', 'The answer window is not available.');
+      }
       if (!state.currentQuestion.eligiblePlayerIds.includes(command.playerId)) {
         return reject('answer_closed', 'This player was not eligible when the question opened.');
       }
@@ -443,25 +548,43 @@ export function decideGame(
         return reject('invalid_answer', 'That answer is not a choice for this question.');
       }
 
+      const accepted: Extract<GameEvent, { type: 'answer.accepted' }> = {
+        type: 'answer.accepted',
+        at: command.now,
+        submission: {
+          playerId: command.playerId,
+          answerId: command.answerId,
+          receivedAt: command.now,
+        },
+      };
+
       return {
         ok: true,
-        events: [
-          {
-            type: 'answer.accepted',
-            at: command.now,
-            submission: {
-              playerId: command.playerId,
-              answerId: command.answerId,
-              receivedAt: command.now,
-            },
-          },
-        ],
+        events:
+          state.currentQuestion.answerNarrationStatus === 'playing'
+            ? [
+                accepted,
+                answerNarrationEndedEvent(
+                  question,
+                  state.currentQuestion,
+                  command.now,
+                  'first_answer',
+                  command.playerId,
+                ),
+              ]
+            : [accepted],
       };
     }
 
     case 'host.reveal': {
       if (state.phase !== 'question') {
         return reject('invalid_phase', 'There is no open question to reveal.');
+      }
+      if (state.currentQuestion?.timingPhase !== 'answering') {
+        return reject(
+          'invalid_phase',
+          'The answer board must open before the question can be revealed.',
+        );
       }
       return {
         ok: true,
@@ -478,6 +601,80 @@ export function decideGame(
     case 'host.reset':
       return { ok: true, events: [{ type: 'session.reset', at: command.now }] };
   }
+}
+
+function normalizeCurrentQuestion(value: CurrentQuestionState): CurrentQuestionState {
+  const persisted = value as Omit<CurrentQuestionState, 'timingPhase'> & {
+    timingPhase?: CurrentQuestionState['timingPhase'] | 'narrating';
+    narrationEndedAt?: number | null;
+    narrationEndReason?: 'completed' | 'first_answer' | null;
+    promptEndedAt?: number | null;
+    answerWindowOpenedAt?: number | null;
+    answerNarrationStatus?: CurrentQuestionState['answerNarrationStatus'];
+    answerNarrationEndedAt?: number | null;
+    answerNarrationEndReason?: CurrentQuestionState['answerNarrationEndReason'];
+  };
+
+  if (persisted.timingPhase === undefined) {
+    return {
+      ...structuredClone(value),
+      timingPhase: 'answering',
+      promptEndedAt: value.openedAt,
+      answerWindowOpenedAt: value.openedAt,
+      answerNarrationStatus: 'completed',
+      answerNarrationEndedAt: value.openedAt,
+      answerNarrationEndReason: 'legacy',
+    };
+  }
+
+  if (persisted.timingPhase === 'narrating') {
+    return {
+      ...structuredClone(value),
+      timingPhase: 'prompt',
+      promptEndedAt: null,
+      answerWindowOpenedAt: null,
+      deadlineAt: null,
+      answerNarrationStatus: 'pending',
+      answerNarrationEndedAt: null,
+      answerNarrationEndReason: null,
+    };
+  }
+
+  if (persisted.timingPhase === 'prompt') {
+    return {
+      ...structuredClone(value),
+      timingPhase: 'prompt',
+      promptEndedAt: persisted.promptEndedAt ?? null,
+      answerWindowOpenedAt: persisted.answerWindowOpenedAt ?? null,
+      deadlineAt: value.deadlineAt ?? null,
+      answerNarrationStatus: persisted.answerNarrationStatus ?? 'pending',
+      answerNarrationEndedAt: persisted.answerNarrationEndedAt ?? null,
+      answerNarrationEndReason: persisted.answerNarrationEndReason ?? null,
+    };
+  }
+
+  if (persisted.answerNarrationStatus !== undefined) {
+    return {
+      ...structuredClone(value),
+      timingPhase: 'answering',
+      promptEndedAt: persisted.promptEndedAt ?? persisted.answerWindowOpenedAt ?? value.openedAt,
+      answerWindowOpenedAt: persisted.answerWindowOpenedAt ?? value.openedAt,
+      answerNarrationStatus: persisted.answerNarrationStatus,
+      answerNarrationEndedAt: persisted.answerNarrationEndedAt ?? null,
+      answerNarrationEndReason: persisted.answerNarrationEndReason ?? null,
+    };
+  }
+
+  const legacyNarrationReason = persisted.narrationEndReason;
+  return {
+    ...structuredClone(value),
+    timingPhase: 'answering',
+    promptEndedAt: persisted.promptEndedAt ?? persisted.narrationEndedAt ?? value.openedAt,
+    answerWindowOpenedAt: persisted.answerWindowOpenedAt ?? value.openedAt,
+    answerNarrationStatus: legacyNarrationReason === 'first_answer' ? 'interrupted' : 'completed',
+    answerNarrationEndedAt: persisted.narrationEndedAt ?? value.openedAt,
+    answerNarrationEndReason: legacyNarrationReason === 'first_answer' ? 'first_answer' : 'legacy',
+  };
 }
 
 export function evolveGame(previous: GameState | null, event: GameEvent): GameState {
@@ -524,8 +721,56 @@ export function evolveGame(previous: GameState | null, event: GameEvent): GameSt
       break;
     case 'question.opened':
       state.phase = 'question';
-      state.currentQuestion = structuredClone(event.currentQuestion);
+      state.currentQuestion = normalizeCurrentQuestion(event.currentQuestion);
       state.reveal = null;
+      break;
+    case 'question.answers_presented':
+      if (
+        !state.currentQuestion ||
+        state.currentQuestion.phaseToken !== event.phaseToken ||
+        state.currentQuestion.timingPhase !== 'prompt'
+      ) {
+        throw new Error('question.answers_presented does not match the active prompt.');
+      }
+      state.currentQuestion.timingPhase = 'answering';
+      state.currentQuestion.promptEndedAt = event.at;
+      state.currentQuestion.answerWindowOpenedAt = event.openedAt;
+      state.currentQuestion.deadlineAt = event.deadlineAt;
+      state.currentQuestion.answerNarrationStatus = 'playing';
+      state.currentQuestion.answerNarrationEndedAt = null;
+      state.currentQuestion.answerNarrationEndReason = null;
+      break;
+    case 'question.answer_narration_ended':
+      if (
+        !state.currentQuestion ||
+        state.currentQuestion.phaseToken !== event.phaseToken ||
+        state.currentQuestion.timingPhase !== 'answering' ||
+        state.currentQuestion.answerNarrationStatus !== 'playing'
+      ) {
+        throw new Error('question.answer_narration_ended does not match active answer narration.');
+      }
+      state.currentQuestion.answerNarrationStatus =
+        event.reason === 'first_answer' ? 'interrupted' : 'completed';
+      state.currentQuestion.answerNarrationEndedAt = event.at;
+      state.currentQuestion.answerNarrationEndReason = event.reason;
+      break;
+    case 'question.answer_window_opened':
+      if (
+        !state.currentQuestion ||
+        state.currentQuestion.phaseToken !== event.phaseToken ||
+        state.currentQuestion.timingPhase !== 'prompt'
+      ) {
+        throw new Error('Legacy question.answer_window_opened does not match the active prompt.');
+      }
+      state.currentQuestion.timingPhase = 'answering';
+      state.currentQuestion.promptEndedAt = event.at;
+      state.currentQuestion.answerWindowOpenedAt = event.openedAt;
+      state.currentQuestion.deadlineAt = event.deadlineAt;
+      state.currentQuestion.answerNarrationStatus =
+        event.reason === 'first_answer' ? 'interrupted' : 'completed';
+      state.currentQuestion.answerNarrationEndedAt = event.at;
+      state.currentQuestion.answerNarrationEndReason =
+        event.reason === 'first_answer' ? 'first_answer' : 'legacy';
       break;
     case 'answer.accepted':
       if (state.currentQuestion) {

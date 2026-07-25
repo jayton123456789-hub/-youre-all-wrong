@@ -180,6 +180,12 @@ export class SessionRuntime {
   #scheduleDeadline(): void {
     this.#clearDeadline();
     if (this.#state.phase !== 'question' || !this.#state.currentQuestion) return;
+    if (
+      this.#state.currentQuestion.timingPhase !== 'answering' ||
+      this.#state.currentQuestion.deadlineAt === null
+    ) {
+      return;
+    }
     const questionId =
       this.pack.episode.rounds[this.#state.currentQuestion.roundIndex]?.questions[
         this.#state.currentQuestion.questionIndex
@@ -194,6 +200,7 @@ export class SessionRuntime {
   #scheduleAllAnswered(): void {
     if (this.#state.phase !== 'question' || !this.#state.currentQuestion) return;
     const pointer = this.#state.currentQuestion;
+    if (pointer.timingPhase !== 'answering') return;
     if (
       pointer.eligiblePlayerIds.length === 0 ||
       Object.keys(pointer.answers).length !== pointer.eligiblePlayerIds.length
@@ -244,6 +251,15 @@ export class SessionRuntime {
     this.#publish();
 
     if (decision.events.some((event) => event.type === 'question.opened')) {
+      this.#scheduleDeadline();
+    }
+    if (
+      decision.events.some(
+        (event) =>
+          event.type === 'question.answers_presented' ||
+          event.type === 'question.answer_window_opened',
+      )
+    ) {
       this.#scheduleDeadline();
     }
     if (decision.events.some((event) => event.type === 'question.revealed')) {
@@ -440,7 +456,19 @@ export class SessionRuntime {
             ? { type: 'host.advance', now, nextPhaseToken: secret(18) }
             : input.action === 'reveal'
               ? { type: 'host.reveal', now, reason: 'host' }
-              : { type: 'host.reset', now };
+              : input.action === 'answers_presented' || input.action === 'narration_complete'
+                ? {
+                    type: 'host.answers_presented',
+                    now,
+                    questionId: input.questionId,
+                  }
+                : input.action === 'answer_narration_complete'
+                  ? {
+                      type: 'host.answer_narration_complete',
+                      now,
+                      questionId: input.questionId,
+                    }
+                  : { type: 'host.reset', now };
 
       return this.#commit('host', input.commandId, command);
     });
