@@ -38,33 +38,39 @@ function run(pack: Showpack, state: GameState, command: GameCommand): GameState 
   return applyEvents(state, decision.events);
 }
 
-function introState(pack: Showpack): GameState {
+interface TestPlayer {
+  id: string;
+  name: string;
+}
+
+const DEFAULT_PLAYERS: TestPlayer[] = [
+  { id: 'p1', name: 'Riley' },
+  { id: 'p2', name: 'Marcus' },
+];
+
+function introState(pack: Showpack, players: TestPlayer[] = DEFAULT_PLAYERS): GameState {
   let state = genesis();
-  state = run(pack, state, {
-    type: 'player.join',
-    now: 1_100,
-    playerId: 'p1',
-    name: 'Riley',
-  });
-  state = run(pack, state, {
-    type: 'player.join',
-    now: 1_200,
-    playerId: 'p2',
-    name: 'Marcus',
+  players.forEach((player, index) => {
+    state = run(pack, state, {
+      type: 'player.join',
+      now: 1_100 + index * 100,
+      playerId: player.id,
+      name: player.name,
+    });
   });
   return run(pack, state, { type: 'host.start', now: 2_000 });
 }
 
-function promptState(pack: Showpack): GameState {
-  return run(pack, introState(pack), {
+function promptState(pack: Showpack, players: TestPlayer[] = DEFAULT_PLAYERS): GameState {
+  return run(pack, introState(pack, players), {
     type: 'host.advance',
     now: 3_000,
     nextPhaseToken: 'secure-phase-token',
   });
 }
 
-function answerBoardState(pack: Showpack): GameState {
-  return run(pack, promptState(pack), {
+function answerBoardState(pack: Showpack, players: TestPlayer[] = DEFAULT_PLAYERS): GameState {
+  return run(pack, promptState(pack, players), {
     type: 'host.answers_presented',
     now: 4_000,
     questionId: 'question-one',
@@ -174,6 +180,52 @@ describe('game projections', () => {
     expect(projectGame(state, pack).presentation).toBeNull();
   });
 
+  it('plays each selected answer reaction once and uses stable numbered group callouts', () => {
+    const pack = makeTestShowpack();
+    let state = answerBoardState(pack, [
+      { id: 'p1', name: 'Riley' },
+      { id: 'p2', name: 'Marcus' },
+      { id: 'p3', name: 'Jayton' },
+    ]);
+
+    for (const [playerId, answerId, now] of [
+      ['p1', 'wrong-b', 5_000],
+      ['p2', 'wrong-b', 5_100],
+      ['p3', 'correct-a', 5_200],
+    ] as const) {
+      state = run(pack, state, {
+        type: 'player.answer',
+        now,
+        playerId,
+        questionId: 'question-one',
+        answerId,
+        phaseToken: 'secure-phase-token',
+      });
+    }
+    state = run(pack, state, { type: 'host.reveal', now: 6_000, reason: 'host' });
+
+    const presentation = projectGame(state, pack).presentation;
+    expect(presentation?.parts.map((part) => part.id)).toEqual([
+      'player-p1',
+      'player-p2',
+      'player-p3',
+      'explanation',
+    ]);
+    expect(presentation?.parts[0]?.cues.map((cue) => cue.id)).toEqual([
+      'runtime-player-callout-1-2',
+      'question-one-wrong-b',
+    ]);
+    expect(presentation?.parts[1]?.cues).toEqual([]);
+    expect(presentation?.parts[2]?.cues.map((cue) => cue.id)).toEqual([
+      'runtime-player-callout-3',
+      'question-one-correct',
+    ]);
+    const spokenIds =
+      presentation?.cues.filter((cue) => cue.type === 'line').map((cue) => cue.id) ?? [];
+    expect(spokenIds.filter((id) => id === 'question-one-wrong-b')).toHaveLength(1);
+    expect(spokenIds.filter((id) => id === 'question-one-correct')).toHaveLength(1);
+  });
+
   it('projects reveal and deterministic safe finale cues to the host only', () => {
     const pack = makeTestShowpack();
     pack.episode.finale.winnerRoasts.push([line('winner-roast-two', 'Alternate winner roast.')]);
@@ -201,13 +253,18 @@ describe('game projections', () => {
     const hostReveal = projectGame(state, pack);
     expect(hostReveal.presentation).toMatchObject({ kind: 'reveal', stage: 'reveal' });
     expect(hostReveal.presentation?.parts.map((part) => part.id)).toEqual([
-      'player-p1',
       'player-p2',
+      'player-p1',
       'explanation',
     ]);
     expect(
       hostReveal.presentation?.cues.filter((cue) => cue.type === 'line').map((cue) => cue.id),
-    ).toEqual(['question-one-correct', 'question-one-wrong-b']);
+    ).toEqual([
+      'runtime-player-callout-2',
+      'question-one-wrong-b',
+      'runtime-player-callout-1',
+      'question-one-correct',
+    ]);
     expect(hostReveal.reveal?.answers).toHaveLength(4);
     expect(hostReveal.reveal?.playerResults).toHaveLength(2);
     const playerReveal = projectGame(state, pack, 'p1');

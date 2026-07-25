@@ -1,5 +1,12 @@
+import { playerGroupCalloutCue } from './player-callouts.js';
 import type { CueSequence, Question, Showpack } from '../showpack/schema.js';
-import type { GameSnapshot, GameState, HostPresentation, PublicPlayer } from './types.js';
+import type {
+  GameSnapshot,
+  GameState,
+  HostPresentation,
+  PlayerQuestionResult,
+  PublicPlayer,
+} from './types.js';
 
 function lineText(cues: CueSequence): string[] {
   return cues.filter((cue) => cue.type === 'line').map((cue) => cue.text);
@@ -100,6 +107,112 @@ function finalePresentation(
   );
 }
 
+interface RevealResultGroup {
+  answerId: string | null;
+  results: PlayerQuestionResult[];
+}
+
+function groupRevealResults(
+  state: GameState,
+  question: Question,
+  results: PlayerQuestionResult[],
+): RevealResultGroup[] {
+  const groups = new Map<string, RevealResultGroup>();
+  for (const result of results) {
+    const key = result.answerId ?? '__no_answer__';
+    const group = groups.get(key) ?? { answerId: result.answerId, results: [] };
+    group.results.push(result);
+    groups.set(key, group);
+  }
+
+  const answerOrder = new Map(question.answers.map((answer, index) => [answer.id, index]));
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      results: [...group.results].sort(
+        (a, b) =>
+          (state.players[a.playerId]?.joinOrder ?? Number.MAX_SAFE_INTEGER) -
+          (state.players[b.playerId]?.joinOrder ?? Number.MAX_SAFE_INTEGER),
+      ),
+    }))
+    .sort((a, b) => {
+      const aCorrect = a.answerId === question.correctAnswerId;
+      const bCorrect = b.answerId === question.correctAnswerId;
+      if (aCorrect !== bCorrect) return aCorrect ? 1 : -1;
+      if (a.answerId === null || b.answerId === null) {
+        if (a.answerId === b.answerId) return 0;
+        return a.answerId === null ? 1 : -1;
+      }
+      return (
+        b.results.length - a.results.length ||
+        (answerOrder.get(a.answerId) ?? Number.MAX_SAFE_INTEGER) -
+          (answerOrder.get(b.answerId) ?? Number.MAX_SAFE_INTEGER)
+      );
+    });
+}
+
+function playerPartsForGroup(
+  state: GameState,
+  results: PlayerQuestionResult[],
+  reaction: CueSequence,
+): HostPresentation['parts'] {
+  const [first, ...remaining] = results;
+  if (!first) return [];
+
+  const playerNumbers = results.map((result) => {
+    const player = state.players[result.playerId];
+    if (!player) throw new Error(`Reveal referenced missing player "${result.playerId}".`);
+    return player.joinOrder + 1;
+  });
+
+  return [
+    {
+      id: `player-${first.playerId}`,
+      cues: [playerGroupCalloutCue(playerNumbers), ...reaction],
+    },
+    ...remaining.map((result) => ({ id: `player-${result.playerId}`, cues: [] })),
+  ];
+}
+
+function revealPresentationParts(state: GameState, question: Question): HostPresentation['parts'] {
+  if (!state.reveal) return [];
+
+  const groups = groupRevealResults(state, question, state.reveal.playerResults);
+  const selectedConditional = question.conditionalReactions.find((reaction) =>
+    state.reveal?.reactionIds.includes(reaction.id),
+  );
+  const parts: HostPresentation['parts'] = [];
+
+  if (selectedConditional) {
+    parts.push(
+      ...playerPartsForGroup(state, state.reveal.playerResults, selectedConditional.cues),
+      { id: 'correct-answer', cues: question.correctReaction },
+    );
+  } else {
+    const correctGroup = groups.find((group) => group.answerId === question.correctAnswerId);
+    for (const group of groups) {
+      if (group.answerId === question.correctAnswerId) continue;
+      const reaction =
+        group.answerId === null
+          ? question.noAnswerReaction
+          : (question.wrongAnswerReactions[group.answerId] ?? question.noAnswerReaction);
+      parts.push(...playerPartsForGroup(state, group.results, reaction));
+    }
+
+    if (correctGroup) {
+      parts.push(...playerPartsForGroup(state, correctGroup.results, question.correctReaction));
+    } else {
+      parts.push({ id: 'correct-answer', cues: question.correctReaction });
+    }
+  }
+
+  parts.push({
+    id: 'explanation',
+    cues: [...question.explanation, ...question.postQuestion],
+  });
+  return parts;
+}
+
 function hostPresentation(
   state: GameState,
   pack: Showpack,
@@ -145,36 +258,12 @@ function hostPresentation(
     return null;
   }
 
-  if (state.phase === 'reveal' && state.reveal) {
-    const playerParts =
-      question?.answers === undefined
-        ? []
-        : state.reveal.playerResults.map((result) => ({
-            id: `player-${result.playerId}`,
-            cues:
-              result.answerId === null
-                ? question.noAnswerReaction
-                : result.correct
-                  ? question.correctReaction
-                  : (question.wrongAnswerReactions[result.answerId] ?? question.noAnswerReaction),
-          }));
-    const selectedConditional = question?.conditionalReactions.find((reaction) =>
-      state.reveal?.reactionIds.includes(reaction.id),
-    );
+  if (state.phase === 'reveal' && state.reveal && question) {
     return presentation(
       'reveal',
       'reveal',
       `${state.sessionId}:reveal:${state.reveal.questionId}:${state.reveal.revealedAt}`,
-      [
-        ...playerParts,
-        ...(selectedConditional
-          ? [{ id: `group-${selectedConditional.id}`, cues: selectedConditional.cues }]
-          : []),
-        {
-          id: 'explanation',
-          cues: [...(question?.explanation ?? []), ...(question?.postQuestion ?? [])],
-        },
-      ],
+      revealPresentationParts(state, question),
     );
   }
 

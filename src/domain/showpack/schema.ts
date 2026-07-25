@@ -266,8 +266,8 @@ const ManifestSchema = z
     language: z.string().regex(/^[a-z]{2}(?:-[A-Z]{2})?$/),
     createdAt: z.string().datetime({ offset: true }),
     contentRating: z.enum(['everyone', 'teen', 'mature']),
-    minPlayers: z.number().int().min(1).max(32),
-    maxPlayers: z.number().int().min(1).max(32),
+    minPlayers: z.number().int().min(1).max(8),
+    maxPlayers: z.number().int().min(1).max(8),
     estimatedMinutes: z.number().int().min(1).max(240),
     assets: z.array(AssetSchema).max(1_000).default([]),
   })

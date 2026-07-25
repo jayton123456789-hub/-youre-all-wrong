@@ -69,6 +69,13 @@ function semanticIssues(pack: Showpack): ValidationIssue[] {
   const inspectCues = (cues: Showpack['episode']['opening'], basePath: string) => {
     cues.forEach((cue, index) => {
       const path = `${basePath}/${index}`;
+      if (cue.id.startsWith('runtime-')) {
+        issues.push({
+          path: `${path}/id`,
+          code: 'reserved_runtime_id',
+          message: 'Cue IDs beginning with "runtime-" are reserved for generated game assets.',
+        });
+      }
       claimId(cue.id, `${path}/id`);
       if (cue.type === 'sound' && !assetIds.has(cue.assetId)) {
         issues.push({

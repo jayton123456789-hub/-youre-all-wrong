@@ -14,6 +14,50 @@ function Escape-XmlText {
   return [System.Security.SecurityElement]::Escape($Value)
 }
 
+function Apply-Pronunciation {
+  param(
+    [string]$Text,
+    [object]$Pronunciation
+  )
+
+  if ($null -eq $Pronunciation) {
+    return $Text
+  }
+
+  $spokenText = $Text
+  $entries = @(
+    $Pronunciation.PSObject.Properties |
+      Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.Name) } |
+      Sort-Object { $_.Name.Length } -Descending
+  )
+  foreach ($entry in $entries) {
+    $written = [string]$entry.Name
+    $spoken = [string]$entry.Value
+    if ([string]::IsNullOrWhiteSpace($spoken)) {
+      continue
+    }
+
+    # Match complete written tokens or phrases without accidentally replacing
+    # the same letters inside an unrelated word. The longest entries run first
+    # so an authored phrase wins over a shorter token contained inside it.
+    $escapedWritten = [System.Text.RegularExpressions.Regex]::Escape($written)
+    $pattern = "(?<![\p{L}\p{N}_])$escapedWritten(?![\p{L}\p{N}_])"
+    $options = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor `
+      [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
+    $replacement = [System.Text.RegularExpressions.MatchEvaluator]{
+      param($match)
+      return $spoken
+    }
+    $spokenText = [System.Text.RegularExpressions.Regex]::Replace(
+      $spokenText,
+      $pattern,
+      $replacement,
+      $options
+    )
+  }
+  return $spokenText
+}
+
 function Get-DeliveryProfile {
   param(
     [string]$Delivery,
@@ -122,7 +166,10 @@ try {
         -Delivery ([string]$job.delivery) `
         -PacePermille ([int]$job.pacePermille) `
         -EnergyPermille ([int]$job.energyPermille)
-      $escapedText = Escape-XmlText ([string]$job.text)
+      $spokenText = Apply-Pronunciation `
+        -Text ([string]$job.text) `
+        -Pronunciation $job.pronunciation
+      $escapedText = Escape-XmlText $spokenText
       $ssml = @"
 <speak version="1.0" xml:lang="en-US">
   <prosody rate="$($profile.Rate)" pitch="$($profile.Pitch)" volume="$($profile.Volume)">

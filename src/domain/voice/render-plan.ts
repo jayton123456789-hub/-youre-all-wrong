@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 
 import { canonicalJson } from '../canonical.js';
+import { buildPlayerGroupCalloutCues } from '../game/player-callouts.js';
 import type { Cue, Showpack } from '../showpack/schema.js';
+
+const PRONUNCIATION_APPLICATION_REVISION = 'whole-token-substitution-v2';
 
 export interface VoiceRendererIdentity {
   engineId: string;
@@ -20,7 +23,19 @@ export interface PlannedLine {
   energyPermille: number;
   pauseBeforeMs: number;
   pauseAfterMs: number;
+  pronunciation: Record<string, string>;
   cacheKey: string;
+}
+
+function normalizePronunciation(pronunciation: Record<string, string>): Record<string, string> {
+  const entries: Array<[string, string]> = Object.entries(pronunciation).map(
+    ([written, spoken]): [string, string] => [
+      written.normalize('NFKC'),
+      spoken.normalize('NFKC').replace(/\s+/gu, ' ').trim(),
+    ],
+  );
+  entries.sort(([writtenA], [writtenB]) => writtenA.localeCompare(writtenB));
+  return Object.fromEntries(entries);
 }
 
 function lineCacheKey(
@@ -31,6 +46,7 @@ function lineCacheKey(
     .update(
       canonicalJson({
         renderer,
+        pronunciationApplicationRevision: PRONUNCIATION_APPLICATION_REVISION,
         spokenText: line.text.normalize('NFKC').replace(/\s+/gu, ' ').trim(),
         cue: {
           delivery: line.delivery,
@@ -38,6 +54,7 @@ function lineCacheKey(
           energyPermille: line.energyPermille,
           pauseBeforeMs: line.pauseBeforeMs,
           pauseAfterMs: line.pauseAfterMs,
+          pronunciation: line.pronunciation,
         },
       }),
     )
@@ -69,6 +86,10 @@ function collectSequences(pack: Showpack): Cue[][] {
     ...pack.episode.finale.winnerRoasts,
     ...pack.episode.finale.loserRoasts,
   );
+
+  // These short phrases let the reveal director address stable seat numbers
+  // without generating names or any speech during the live match.
+  sequences.push(buildPlayerGroupCalloutCues(pack.manifest.maxPlayers));
   return sequences;
 }
 
@@ -95,6 +116,7 @@ export function buildVoiceRenderPlan(
         energyPermille: Math.round(cue.energy * 1_000),
         pauseBeforeMs: cue.pauseBeforeMs,
         pauseAfterMs: cue.pauseAfterMs,
+        pronunciation: normalizePronunciation(cue.pronunciation),
       };
       plan.push({
         ...withoutKey,
