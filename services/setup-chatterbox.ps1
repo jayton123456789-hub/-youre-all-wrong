@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$EnvironmentPath = '.yallwrong/chatterbox-venv',
+  [ValidateSet('auto', 'cpu', 'cu124', 'cu126')]
+  [string]$TorchBackend = 'auto',
   [switch]$SkipPythonInstall
 )
 
@@ -41,6 +43,20 @@ function Find-Python311 {
   }
 
   return $null
+}
+
+function Has-NvidiaGpu {
+  $nvidiaSmi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
+  if ($null -eq $nvidiaSmi) {
+    return $false
+  }
+
+  try {
+    & $nvidiaSmi.Source --query-gpu=name --format=csv,noheader 1>$null 2>$null
+    return $LASTEXITCODE -eq 0
+  } catch {
+    return $false
+  }
 }
 
 $python311 = Find-Python311
@@ -86,15 +102,35 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Failed to install chatterbox-tts.'
 }
 
-& $python -c @'
+$resolvedBackend = $TorchBackend
+if ($resolvedBackend -eq 'auto') {
+  $resolvedBackend = if (Has-NvidiaGpu) { 'cu124' } else { 'cpu' }
+}
+
+if ($resolvedBackend -eq 'cpu') {
+  Write-Host 'Using CPU-only PyTorch.'
+} else {
+  $torchIndex = "https://download.pytorch.org/whl/$resolvedBackend"
+  Write-Host "Installing the official PyTorch 2.6.0 $resolvedBackend build..."
+  & $python -m pip install --force-reinstall --no-deps torch==2.6.0 torchaudio==2.6.0 --index-url $torchIndex
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to install the PyTorch $resolvedBackend wheels. Update the NVIDIA driver or rerun with -TorchBackend cpu."
+  }
+}
+
+$requireCuda = if ($resolvedBackend -eq 'cpu') { '0' } else { '1' }
+& $python -c @"
 import torch
 import chatterbox
 print('Chatterbox import: OK')
 print(f'PyTorch: {torch.__version__}')
+print(f'CUDA build: {torch.version.cuda}')
 print(f'CUDA available: {torch.cuda.is_available()}')
 if torch.cuda.is_available():
     print(f'GPU: {torch.cuda.get_device_name(0)}')
-'@
+if '$requireCuda' == '1' and not torch.cuda.is_available():
+    raise SystemExit('A CUDA PyTorch build was installed, but the NVIDIA GPU is unavailable. Update the NVIDIA driver and rerun setup.')
+"@
 if ($LASTEXITCODE -ne 0) {
   throw 'Chatterbox installed, but its import or GPU verification failed.'
 }
@@ -102,6 +138,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ''
 Write-Host 'Chatterbox environment is ready.'
 Write-Host "Python: $python"
+Write-Host "PyTorch backend: $resolvedBackend"
 Write-Host ''
 Write-Host 'Set these before starting the game:'
 Write-Host '$env:YAW_VOICE_ENGINE = "chatterbox"'
