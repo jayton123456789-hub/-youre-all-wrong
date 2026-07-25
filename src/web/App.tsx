@@ -25,6 +25,7 @@ import type {
 } from '../domain/protocol.js';
 import {
   clearCredential,
+  createBrowserId,
   getOrCreateClientId,
   readCredential,
   readFragmentSecrets,
@@ -267,7 +268,7 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
         'host:command',
         {
           protocolVersion: 1,
-          commandId: crypto.randomUUID(),
+          commandId: createBrowserId(),
           expectedRevision: snapshot.revision,
           action,
         },
@@ -543,7 +544,7 @@ function ControllerScreen({
       'player:resume',
       {
         protocolVersion: 1,
-        commandId: crypto.randomUUID(),
+        commandId: createBrowserId(),
         sessionCode: code,
         playerId: credential.playerId,
         resumeToken: credential.resumeToken,
@@ -569,7 +570,7 @@ function ControllerScreen({
       'player:join',
       {
         protocolVersion: 1,
-        commandId: crypto.randomUUID(),
+        commandId: createBrowserId(),
         sessionCode: code,
         ...(secrets.joinSecret ? { joinSecret: secrets.joinSecret } : {}),
         clientId,
@@ -584,7 +585,7 @@ function ControllerScreen({
     playUiSound('lock');
     socket.emit(
       'player:ready',
-      { protocolVersion: 1, commandId: crypto.randomUUID(), ready },
+      { protocolVersion: 1, commandId: createBrowserId(), ready },
       (ack) => {
         if (!ack.ok) setError(ack.message);
       },
@@ -598,7 +599,7 @@ function ControllerScreen({
       'player:answer',
       {
         protocolVersion: 1,
-        commandId: crypto.randomUUID(),
+        commandId: createBrowserId(),
         expectedRevision: snapshot.revision,
         questionId: snapshot.question.id,
         answerId,
