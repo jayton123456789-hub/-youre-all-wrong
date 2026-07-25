@@ -135,7 +135,10 @@ $requireCuda = if ($resolvedBackend -eq 'cpu') { '0' } else { '1' }
 import torch
 import chatterbox
 import perth
-print('Chatterbox import: OK')
+from chatterbox.tts import ChatterboxTTS
+from chatterbox.tts_turbo import ChatterboxTurboTTS
+print('Chatterbox original import: OK')
+print('Chatterbox Turbo import: OK')
 print(f'Chatterbox package: {chatterbox.__file__}')
 print(f'Perth package: {perth.__file__}')
 print(f'PyTorch: {torch.__version__}')
@@ -147,7 +150,7 @@ if '$requireCuda' == '1' and not torch.cuda.is_available():
     raise SystemExit('A CUDA PyTorch build was installed, but the NVIDIA GPU is unavailable. Update the NVIDIA driver and rerun setup.')
 "@
 if ($LASTEXITCODE -ne 0) {
-  throw 'Chatterbox installed, but its import or GPU verification failed.'
+  throw 'Chatterbox installed, but its model imports or GPU verification failed.'
 }
 
 Write-Host ''
@@ -158,5 +161,6 @@ Write-Host "Perth revision: $perthRevision"
 Write-Host ''
 Write-Host 'Set these before starting the game:'
 Write-Host '$env:YAW_VOICE_ENGINE = "chatterbox"'
+Write-Host '$env:YAW_CHATTERBOX_MODEL = "turbo"'
 Write-Host "`$env:YAW_CHATTERBOX_PYTHON = '$python'"
 Write-Host '$env:YAW_CHATTERBOX_REFERENCE = "C:\path\to\authorized-reference.wav"'
