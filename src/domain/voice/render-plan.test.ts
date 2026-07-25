@@ -13,7 +13,7 @@ const renderer: VoiceRendererIdentity = {
 };
 
 describe('buildVoiceRenderPlan', () => {
-  it('enumerates every reachable line, including wrong branches and endings', () => {
+  it('enumerates every reachable line, endings, and numbered player-group callouts', () => {
     const plan = buildVoiceRenderPlan(makeTestShowpack(), renderer);
     const cueIds = plan.map((line) => line.cueId);
 
@@ -22,6 +22,8 @@ describe('buildVoiceRenderPlan', () => {
     expect(cueIds).toContain('finale-title-drop');
     expect(cueIds).toContain('winner-roast-one');
     expect(cueIds).toContain('loser-roast-one');
+    expect(cueIds).toContain('runtime-player-callout-1');
+    expect(cueIds).toContain('runtime-player-callout-1-2');
     expect(new Set(cueIds).size).toBe(cueIds.length);
   });
 
@@ -40,6 +42,32 @@ describe('buildVoiceRenderPlan', () => {
       .map((line) => line.cueId);
 
     expect(changedIds).toEqual(['question-one-wrong-b']);
+  });
+
+  it('normalizes pronunciation hints and invalidates only the affected clip', () => {
+    const original = makeTestShowpack();
+    const changed = structuredClone(original);
+    const originalCue = original.episode.rounds[0]!.questions[0]!.prompt[0]!;
+    const changedCue = changed.episode.rounds[0]!.questions[0]!.prompt[0]!;
+    if (originalCue.type !== 'line' || changedCue.type !== 'line') {
+      throw new Error('Test fixture must contain a spoken prompt line.');
+    }
+    originalCue.pronunciation = { GIF: 'jiff' };
+    changedCue.pronunciation = { GIF: 'gee eye eff' };
+
+    const originalPlan = buildVoiceRenderPlan(original, renderer);
+    const changedPlan = buildVoiceRenderPlan(changed, renderer);
+    const originalPrompt = originalPlan.find((line) => line.cueId === originalCue.id);
+    const changedPrompt = changedPlan.find((line) => line.cueId === changedCue.id);
+
+    expect(originalPrompt?.pronunciation).toEqual({ GIF: 'jiff' });
+    expect(changedPrompt?.pronunciation).toEqual({ GIF: 'gee eye eff' });
+    expect(changedPrompt?.cacheKey).not.toBe(originalPrompt?.cacheKey);
+    expect(
+      originalPlan
+        .filter((line, index) => line.cacheKey !== changedPlan[index]?.cacheKey)
+        .map((line) => line.cueId),
+    ).toEqual([originalCue.id]);
   });
 
   it('invalidates the full cache when a model revision changes', () => {
