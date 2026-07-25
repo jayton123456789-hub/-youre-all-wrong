@@ -4,6 +4,8 @@ import { canonicalJson } from '../canonical.js';
 import { buildPlayerGroupCalloutCues } from '../game/player-callouts.js';
 import type { Cue, Showpack } from '../showpack/schema.js';
 
+const PRONUNCIATION_APPLICATION_REVISION = 'whole-token-substitution-v2';
+
 export interface VoiceRendererIdentity {
   engineId: string;
   modelRevision: string;
@@ -44,6 +46,7 @@ function lineCacheKey(
     .update(
       canonicalJson({
         renderer,
+        pronunciationApplicationRevision: PRONUNCIATION_APPLICATION_REVISION,
         spokenText: line.text.normalize('NFKC').replace(/\s+/gu, ' ').trim(),
         cue: {
           delivery: line.delivery,
