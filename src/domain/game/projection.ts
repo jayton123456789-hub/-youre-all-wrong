@@ -155,26 +155,43 @@ function playerPartsForGroup(
   state: GameState,
   results: PlayerQuestionResult[],
   reaction: CueSequence,
+  reactionId: string,
 ): HostPresentation['parts'] {
-  const [first, ...remaining] = results;
-  if (!first) return [];
+  if (results.length === 0) return [];
 
-  const playerNumbers = results.map((result) => {
+  const numberedResults = results.map((result) => {
     const player = state.players[result.playerId];
     if (!player) throw new Error(`Reveal referenced missing player "${result.playerId}".`);
-    return player.joinOrder + 1;
+    return { result, number: player.joinOrder + 1 };
   });
+
+  if (numberedResults.length === 1) {
+    const only = numberedResults[0]!;
+    return [
+      {
+        id: `player-${only.result.playerId}`,
+        cues: [playerGroupCalloutCue([only.number]), ...reaction],
+      },
+    ];
+  }
 
   return [
     {
-      id: `player-${first.playerId}`,
-      cues: [playerGroupCalloutCue(playerNumbers), ...reaction],
+      id: `reaction-${reactionId}`,
+      cues: [playerGroupCalloutCue(numberedResults.map(({ number }) => number)), ...reaction],
     },
-    ...remaining.map((result) => ({ id: `player-${result.playerId}`, cues: [] })),
+    ...numberedResults.map(({ result, number }) => ({
+      id: `player-${result.playerId}`,
+      cues: [playerGroupCalloutCue([number])],
+    })),
   ];
 }
 
-function revealPresentationParts(state: GameState, question: Question): HostPresentation['parts'] {
+function revealPresentationParts(
+  state: GameState,
+  pack: Showpack,
+  question: Question,
+): HostPresentation['parts'] {
   if (!state.reveal) return [];
 
   const groups = groupRevealResults(state, question, state.reveal.playerResults);
@@ -185,7 +202,12 @@ function revealPresentationParts(state: GameState, question: Question): HostPres
 
   if (selectedConditional) {
     parts.push(
-      ...playerPartsForGroup(state, state.reveal.playerResults, selectedConditional.cues),
+      ...playerPartsForGroup(
+        state,
+        state.reveal.playerResults,
+        selectedConditional.cues,
+        `conditional-${selectedConditional.id}`,
+      ),
       { id: 'correct-answer', cues: question.correctReaction },
     );
   } else {
@@ -196,11 +218,20 @@ function revealPresentationParts(state: GameState, question: Question): HostPres
         group.answerId === null
           ? question.noAnswerReaction
           : (question.wrongAnswerReactions[group.answerId] ?? question.noAnswerReaction);
-      parts.push(...playerPartsForGroup(state, group.results, reaction));
+      parts.push(
+        ...playerPartsForGroup(state, group.results, reaction, group.answerId ?? 'no-answer'),
+      );
     }
 
     if (correctGroup) {
-      parts.push(...playerPartsForGroup(state, correctGroup.results, question.correctReaction));
+      parts.push(
+        ...playerPartsForGroup(
+          state,
+          correctGroup.results,
+          question.correctReaction,
+          question.correctAnswerId,
+        ),
+      );
     } else {
       parts.push({ id: 'correct-answer', cues: question.correctReaction });
     }
@@ -210,6 +241,16 @@ function revealPresentationParts(state: GameState, question: Question): HostPres
     id: 'explanation',
     cues: [...question.explanation, ...question.postQuestion],
   });
+  const pointer = state.currentQuestion;
+  const round = pointer ? pack.episode.rounds[pointer.roundIndex] : undefined;
+  if (
+    pointer &&
+    round &&
+    round.outro.length > 0 &&
+    pointer.questionIndex === round.questions.length - 1
+  ) {
+    parts.push({ id: `round-${round.id}-outro`, cues: round.outro });
+  }
   return parts;
 }
 
@@ -232,11 +273,22 @@ function hostPresentation(
 
   if (state.phase === 'question' && state.currentQuestion && question) {
     if (state.currentQuestion.timingPhase === 'prompt') {
+      const round = pack.episode.rounds[state.currentQuestion.roundIndex];
+      const laterRoundIntro =
+        state.currentQuestion.questionIndex === 0 && state.currentQuestion.roundIndex > 0
+          ? [
+              {
+                id: `round-${round?.id ?? state.currentQuestion.roundIndex}-intro`,
+                cues: round?.intro ?? [],
+              },
+            ]
+          : [];
       return presentation(
         'question',
         'prompt',
         `${state.sessionId}:question:${question.id}:prompt`,
         [
+          ...laterRoundIntro,
           { id: 'category', cues: question.categoryIntro },
           { id: 'prompt', cues: question.prompt },
         ],
@@ -263,7 +315,7 @@ function hostPresentation(
       'reveal',
       'reveal',
       `${state.sessionId}:reveal:${state.reveal.questionId}:${state.reveal.revealedAt}`,
-      revealPresentationParts(state, question),
+      revealPresentationParts(state, pack, question),
     );
   }
 

@@ -180,6 +180,58 @@ describe('game projections', () => {
     expect(projectGame(state, pack).presentation).toBeNull();
   });
 
+  it('plays each authored round outro and later-round intro at the transition boundary', () => {
+    const pack = makeTestShowpack();
+    const secondQuestion = structuredClone(pack.episode.rounds[0]!.questions[0]!);
+    secondQuestion.id = 'question-two';
+    secondQuestion.prompt = [line('question-two-prompt', 'This is the second question.')];
+    secondQuestion.promptText = 'This is the second question.';
+    pack.episode.rounds[0]!.outro = [line('round-one-outro-line', 'Round one is over.')];
+    pack.episode.rounds.push({
+      type: 'standard',
+      id: 'round-two',
+      title: 'Round Two',
+      intro: [line('round-two-intro-line', 'Round two begins.')],
+      questions: [secondQuestion],
+      outro: [],
+    });
+
+    let state = answerBoardState(pack);
+    for (const [playerId, answerId] of [
+      ['p1', 'correct-a'],
+      ['p2', 'wrong-b'],
+    ] as const) {
+      state = run(pack, state, {
+        type: 'player.answer',
+        now: 5_000,
+        playerId,
+        questionId: 'question-one',
+        answerId,
+        phaseToken: 'secure-phase-token',
+      });
+    }
+    state = run(pack, state, { type: 'host.reveal', now: 6_000, reason: 'host' });
+
+    const revealParts = projectGame(state, pack).presentation?.parts ?? [];
+    expect(revealParts.at(-1)).toMatchObject({
+      id: 'round-round-one-outro',
+      cues: [expect.objectContaining({ id: 'round-one-outro-line' })],
+    });
+
+    state = run(pack, state, {
+      type: 'host.advance',
+      now: 7_000,
+      nextPhaseToken: 'second-phase-token',
+    });
+    const secondPrompt = projectGame(state, pack).presentation;
+    expect(secondPrompt?.parts.slice(0, 3).map((part) => part.id)).toEqual([
+      'round-round-two-intro',
+      'category',
+      'prompt',
+    ]);
+    expect(secondPrompt?.cues.map((cue) => cue.id)).toContain('round-two-intro-line');
+  });
+
   it('plays each selected answer reaction once and uses stable numbered group callouts', () => {
     const pack = makeTestShowpack();
     let state = answerBoardState(pack, [
@@ -206,6 +258,7 @@ describe('game projections', () => {
 
     const presentation = projectGame(state, pack).presentation;
     expect(presentation?.parts.map((part) => part.id)).toEqual([
+      'reaction-wrong-b',
       'player-p1',
       'player-p2',
       'player-p3',
@@ -215,8 +268,9 @@ describe('game projections', () => {
       'runtime-player-callout-1-2',
       'question-one-wrong-b',
     ]);
-    expect(presentation?.parts[1]?.cues).toEqual([]);
-    expect(presentation?.parts[2]?.cues.map((cue) => cue.id)).toEqual([
+    expect(presentation?.parts[1]?.cues.map((cue) => cue.id)).toEqual(['runtime-player-callout-1']);
+    expect(presentation?.parts[2]?.cues.map((cue) => cue.id)).toEqual(['runtime-player-callout-2']);
+    expect(presentation?.parts[3]?.cues.map((cue) => cue.id)).toEqual([
       'runtime-player-callout-3',
       'question-one-correct',
     ]);

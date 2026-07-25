@@ -400,7 +400,8 @@ Each question has this complete shape:
 ```
 
 The arrays shown empty above must be filled when their field is required.
-`shortLabel` is optional. Answers number 2–6. `timeLimitMs` is 3000–120000.
+`shortLabel` is optional. Every standard question must contain exactly four answers.
+`timeLimitMs` is 3000–120000.
 Each scoring value is an integer from 0–1000000. Every wrong answer—and only a
 wrong answer—must appear once as a `wrongAnswerReactions` key.
 
