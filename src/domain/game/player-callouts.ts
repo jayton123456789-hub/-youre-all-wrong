@@ -14,7 +14,6 @@ const NUMBER_WORDS = [
 ] as const;
 
 type LineCue = Extract<Cue, { type: 'line' }>;
-type StageCue = Extract<Cue, { type: 'stage' }>;
 
 function normalizePlayerNumbers(playerNumbers: number[]): number[] {
   const normalized = [...new Set(playerNumbers)].sort((a, b) => a - b);
@@ -59,17 +58,6 @@ export function playerGroupCalloutCue(playerNumbers: number[]): LineCue {
     pauseBeforeMs: 120,
     pauseAfterMs: 180,
     pronunciation: {},
-  };
-}
-
-export function playerVerdictHoldCue(playerNumber: number): StageCue {
-  const [normalized] = normalizePlayerNumbers([playerNumber]);
-  return {
-    type: 'stage',
-    id: `runtime-player-verdict-${normalized}`,
-    action: 'screen_shake',
-    intensity: 0.28,
-    durationMs: 260,
   };
 }
 
