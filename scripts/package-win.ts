@@ -17,7 +17,12 @@ const packagePaths = await packager({
   asar: true,
   prune: true,
   icon: resolve(projectRoot, 'assets/branding/app-icon.ico'),
-  extraResource: [resolve(projectRoot, 'services/system-voice-worker.ps1')],
+  extraResource: [
+    resolve(projectRoot, 'services/system-voice-worker.ps1'),
+    resolve(projectRoot, 'services/chatterbox-voice-worker.ps1'),
+    resolve(projectRoot, 'services/chatterbox-voice-worker.py'),
+    resolve(projectRoot, 'services/setup-chatterbox.ps1'),
+  ],
   ignore: [
     /^\/\.git(?:\/|$)/,
     /^\/\.github(?:\/|$)/,

@@ -87,9 +87,11 @@ function startRuntime(window: BrowserWindow): void {
   const runtimeEntry = join(__dirname, 'runtime-process.cjs');
   const isDevelopment = Boolean(process.env.YAW_DEV_WEB_URL);
   const webRoot = join(app.getAppPath(), 'dist', 'web');
+  const useChatterbox = process.env.YAW_VOICE_ENGINE?.toLowerCase() === 'chatterbox';
+  const voiceWorkerFile = useChatterbox ? 'chatterbox-voice-worker.ps1' : 'system-voice-worker.ps1';
   const voiceWorkerPath = app.isPackaged
-    ? join(process.resourcesPath, 'system-voice-worker.ps1')
-    : join(app.getAppPath(), 'services', 'system-voice-worker.ps1');
+    ? join(process.resourcesPath, voiceWorkerFile)
+    : join(app.getAppPath(), 'services', voiceWorkerFile);
 
   runtimeProcess = utilityProcess.fork(runtimeEntry, [], {
     serviceName: "YOU'RE ALL WRONG! Runtime",

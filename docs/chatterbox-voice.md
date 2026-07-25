@@ -10,7 +10,8 @@ A successful model load is not approval of a host voice. The built-in Chatterbox
 
 The production host requires:
 
-- an authorized reference recording;
+- an authorized human reference recording or an original synthetic reference from the
+  host foundry;
 - a side-by-side audition;
 - understandable pacing across short and long lines;
 - consistent identity across delivery styles;
@@ -47,7 +48,29 @@ powershell -ExecutionPolicy Bypass -File services/test-chatterbox.ps1 -Force
 
 The smoke test intentionally uses the original model's built-in voice. Its sound is not a production recommendation.
 
-## Record the reference voice
+## Create the reference voice
+
+You do not have to use your own voice. The preferred no-performer workflow creates an
+original synthetic identity from written traits instead of cloning a real person:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File services/setup-host-foundry.ps1
+
+powershell -ExecutionPolicy Bypass -File services/forge-host-voices.ps1 `
+  -CandidateCount 9 `
+  -OpenFolder
+```
+
+The Apache-2.0 Parler-TTS model creates nine local candidates under
+`.yallwrong/host-foundry`. It is used only as a one-time voice designer. Reject any
+candidate that happens to resemble a recognizable person, then pass the strongest WAV to
+the Chatterbox audition command below.
+
+The exact model, seed, written voice direction, duration, and WAV hash are recorded in
+`.yallwrong/host-foundry/manifest.json`. See `docs/host-voice-direction.md` for the
+permanent character and performance contract.
+
+Alternatively, record a consenting performer.
 
 Record a clean 10–20 second WAV containing only a voice you are authorized to use. The person should perform the intended host personality rather than read in a neutral voicemail tone.
 
