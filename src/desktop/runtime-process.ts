@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import { demoPack } from '../content/demo-pack.js';
 import { validateShowpack } from '../domain/showpack/validate.js';
 import { createGameServer } from '../server/app.js';
-import { EpisodeVoicePreflight } from '../server/voice-preflight.js';
+import {
+  EpisodeVoicePreflight,
+  type VoiceRendererConfig,
+} from '../server/voice-preflight.js';
 
 interface ParentMessage {
   type: 'shutdown';
@@ -15,14 +18,34 @@ async function run(): Promise<void> {
     throw new Error(`Bundled episode is invalid: ${JSON.stringify(validation.issues)}`);
   }
 
-  const voice =
-    process.env.YAW_VOICE_CACHE_PATH && process.env.YAW_VOICE_WORKER_PATH
-      ? new EpisodeVoicePreflight({
-          pack: validation.pack,
-          cacheDirectory: resolve(process.env.YAW_VOICE_CACHE_PATH),
-          workerPath: resolve(process.env.YAW_VOICE_WORKER_PATH),
-        })
-      : undefined;
+  const useChatterbox = process.env.YAW_VOICE_ENGINE?.toLowerCase() === 'chatterbox';
+  const configuredWorkerPath =
+    process.env.YAW_VOICE_WORKER_PATH ??
+    (useChatterbox
+      ? 'services/chatterbox-voice-worker.ps1'
+      : 'services/system-voice-worker.ps1');
+  const renderer: VoiceRendererConfig | undefined = useChatterbox
+    ? {
+        engineId: 'chatterbox-tts',
+        modelRevision: 'chatterbox-tts-pip-v1',
+        deliveryPresetRevision: 'yaw-chatterbox-delivery-v1',
+        pronunciationRevision: 'whole-token-substitution-v2',
+        postProcessingRevision: 'chatterbox-native-wave-v1',
+        voiceName: process.env.YAW_CHATTERBOX_VOICE_NAME ?? 'Local Chatterbox Host',
+        voiceProfileHashSource:
+          process.env.YAW_CHATTERBOX_VOICE_ID ??
+          process.env.YAW_CHATTERBOX_REFERENCE ??
+          'chatterbox-default-voice',
+      }
+    : undefined;
+  const voice = process.env.YAW_VOICE_CACHE_PATH
+    ? new EpisodeVoicePreflight({
+        pack: validation.pack,
+        cacheDirectory: resolve(process.env.YAW_VOICE_CACHE_PATH),
+        workerPath: resolve(configuredWorkerPath),
+        ...(renderer ? { renderer } : {}),
+      })
+    : undefined;
   const server = await createGameServer({
     pack: validation.pack,
     packHash: validation.packHash,
