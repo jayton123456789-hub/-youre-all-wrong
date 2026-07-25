@@ -16,7 +16,7 @@ import type { Showpack } from '../domain/showpack/schema.js';
 const ENGINE_ID = 'windows-system-speech' as const;
 const MODEL_REVISION = 'sapi5-pcm-v1';
 const DELIVERY_PRESET_REVISION = 'yaw-system-voice-v1';
-const PRONUNCIATION_REVISION = 'plain-text-v1';
+const PRONUNCIATION_REVISION = 'literal-substitution-v1';
 const POST_PROCESSING_REVISION = 'sapi-pcm-v1';
 
 interface VoiceWorkerJob {
@@ -26,6 +26,7 @@ interface VoiceWorkerJob {
   delivery: PlannedLine['delivery'];
   pacePermille: number;
   energyPermille: number;
+  pronunciation: Record<string, string>;
 }
 
 interface VoiceWorkerManifest {
@@ -266,6 +267,7 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
           delivery: line.delivery,
           pacePermille: line.pacePermille,
           energyPermille: line.energyPermille,
+          pronunciation: line.pronunciation,
         });
       }
 
