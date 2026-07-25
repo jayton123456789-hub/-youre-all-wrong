@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import struct
 import sys
 import traceback
 from pathlib import Path
@@ -24,6 +25,53 @@ def apply_pronunciation(text: str, pronunciation: dict[str, str]) -> str:
         pattern = rf"(?<![\w]){re.escape(written)}(?![\w])"
         spoken = re.sub(pattern, lambda _: replacement, spoken, flags=re.IGNORECASE)
     return spoken
+
+
+def valid_wave_file(path: Path) -> bool:
+    try:
+        file_size = path.stat().st_size
+        with path.open("rb") as source:
+            header = source.read(12)
+            if (
+                len(header) != 12
+                or header[0:4] != b"RIFF"
+                or header[8:12] != b"WAVE"
+            ):
+                return False
+
+            format_ok = False
+            data_ok = False
+            while True:
+                chunk_header = source.read(8)
+                if len(chunk_header) != 8:
+                    break
+                chunk_id = chunk_header[0:4]
+                chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
+                if chunk_size > 512 * 1024 * 1024:
+                    return False
+                if source.tell() + chunk_size > file_size:
+                    return False
+
+                if chunk_id == b"fmt ":
+                    chunk = source.read(chunk_size)
+                    if len(chunk) != chunk_size or chunk_size < 16:
+                        return False
+                    channels = struct.unpack("<H", chunk[2:4])[0]
+                    sample_rate = struct.unpack("<I", chunk[4:8])[0]
+                    format_ok = 1 <= channels <= 8 and 8_000 <= sample_rate <= 192_000
+                elif chunk_id == b"data":
+                    data_ok = chunk_size > 0
+                    source.seek(chunk_size, os.SEEK_CUR)
+                else:
+                    source.seek(chunk_size, os.SEEK_CUR)
+
+                if chunk_size % 2:
+                    source.seek(1, os.SEEK_CUR)
+                if format_ok and data_ok:
+                    return True
+    except (OSError, struct.error):
+        return False
+    return False
 
 
 def delivery_settings(
@@ -182,8 +230,9 @@ def main() -> int:
         cue_id = str(job["cueId"])
         output_path = Path(str(job["outputPath"])).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        cached = output_path.is_file() and output_path.stat().st_size >= 46
+        cached = output_path.is_file() and valid_wave_file(output_path)
         if not cached:
+            output_path.unlink(missing_ok=True)
             spoken_text = apply_pronunciation(
                 str(job["text"]), dict(job.get("pronunciation", {}))
             )
@@ -195,9 +244,10 @@ def main() -> int:
             kwargs: dict[str, Any] = {}
             if reference_audio:
                 kwargs["audio_prompt_path"] = reference_audio
-            if model_kind == "original":
-                kwargs["exaggeration"] = settings["exaggeration"]
-                kwargs["cfg_weight"] = settings["cfg_weight"]
+            # Both the Original and Turbo APIs accept these controls. Leaving Turbo at
+            # its 0.0 defaults flattens every authored delivery mode into the same read.
+            kwargs["exaggeration"] = settings["exaggeration"]
+            kwargs["cfg_weight"] = settings["cfg_weight"]
 
             emit(
                 {
@@ -230,6 +280,10 @@ def main() -> int:
                     model.sr,
                     format="wav",
                 )
+                if not valid_wave_file(temporary_path):
+                    raise RuntimeError(
+                        f'Chatterbox produced an invalid WAV for cue "{cue_id}".'
+                    )
                 temporary_path.replace(output_path)
             finally:
                 temporary_path.unlink(missing_ok=True)

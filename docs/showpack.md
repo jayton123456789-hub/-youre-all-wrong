@@ -37,7 +37,7 @@ Every multiple-choice question contains:
 
 - Stable ID and category
 - Display prompt and performed prompt cues
-- Two to six stable answer IDs
+- Exactly four stable answer IDs
 - One correct answer ID
 - A complete independent reaction for every wrong answer
 - Correct-answer reaction

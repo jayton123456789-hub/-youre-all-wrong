@@ -97,7 +97,10 @@ powershell -ExecutionPolicy Bypass -File services/audition-chatterbox.ps1 `
   -Force
 ```
 
-The script creates six WAV files under `.yallwrong/voice-auditions`:
+The script creates a fingerprinted audition set under `.yallwrong/voice-auditions`
+containing six WAV files plus `audition-manifest.json`. The set identity includes the
+reference WAV bytes, audition copy, and delivery settings, so changing the reference at
+the same path cannot silently reuse stale takes.
 
 1. Turbo controlled
 2. Turbo slower
@@ -106,7 +109,10 @@ The script creates six WAV files under `.yallwrong/voice-auditions`:
 5. Original dramatic
 6. Original dry
 
-Turbo is the preferred starting point for English because it is smaller, requires a reference voice, and is designed for production and narration. The original model remains available because its CFG and exaggeration controls can sometimes fit a specific performance better.
+Turbo is the preferred starting point for English because it is smaller, requires a
+reference voice, and is designed for production and narration. Both installed model APIs
+receive the authored delivery exaggeration and CFG controls; the Original model remains
+available when its larger architecture fits a performance better.
 
 The worker now applies actual pitch-preserving time stretching after generation. Authored `pace` no longer merely influences exaggeration.
 
@@ -121,7 +127,10 @@ $env:YAW_CHATTERBOX_VOICE_ID = 'original-host-v1'
 npm.cmd run dev
 ```
 
-`YAW_CHATTERBOX_VOICE_ID` is part of the content-addressed cache identity. Change it whenever the reference recording or intended voice profile changes.
+The reference WAV's SHA-256 is part of the content-addressed cache identity. Replacing the
+recording at the same path automatically invalidates old renders. Use
+`YAW_CHATTERBOX_VOICE_ID` to intentionally distinguish two different performance profiles
+that share the same source recording.
 
 Production Chatterbox mode fails closed when no reference clip is configured. It does not silently ship the built-in default voice.
 
