@@ -61,7 +61,12 @@ try {
       }
     )
   }
-  $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+  $manifestJson = $manifest | ConvertTo-Json -Depth 8
+  [System.IO.File]::WriteAllText(
+    $manifestPath,
+    $manifestJson,
+    [System.Text.UTF8Encoding]::new($false)
+  )
 
   Write-Host 'Loading Chatterbox on CUDA and generating one test line...'
   Write-Host 'The first run downloads the model weights and can take several minutes.'
