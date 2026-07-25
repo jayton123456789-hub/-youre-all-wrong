@@ -14,6 +14,32 @@ function Escape-XmlText {
   return [System.Security.SecurityElement]::Escape($Value)
 }
 
+function Apply-Pronunciation {
+  param(
+    [string]$Text,
+    [object]$Pronunciation
+  )
+
+  if ($null -eq $Pronunciation) {
+    return $Text
+  }
+
+  $spokenText = $Text
+  $entries = @(
+    $Pronunciation.PSObject.Properties |
+      Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.Name) } |
+      Sort-Object { $_.Name.Length } -Descending
+  )
+  foreach ($entry in $entries) {
+    $written = [string]$entry.Name
+    $spoken = [string]$entry.Value
+    if (-not [string]::IsNullOrWhiteSpace($spoken)) {
+      $spokenText = $spokenText.Replace($written, $spoken)
+    }
+  }
+  return $spokenText
+}
+
 function Get-DeliveryProfile {
   param(
     [string]$Delivery,
@@ -122,7 +148,10 @@ try {
         -Delivery ([string]$job.delivery) `
         -PacePermille ([int]$job.pacePermille) `
         -EnergyPermille ([int]$job.energyPermille)
-      $escapedText = Escape-XmlText ([string]$job.text)
+      $spokenText = Apply-Pronunciation `
+        -Text ([string]$job.text) `
+        -Pronunciation $job.pronunciation
+      $escapedText = Escape-XmlText $spokenText
       $ssml = @"
 <speak version="1.0" xml:lang="en-US">
   <prosody rate="$($profile.Rate)" pitch="$($profile.Pitch)" volume="$($profile.Volume)">
