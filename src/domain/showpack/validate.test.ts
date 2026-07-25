@@ -17,6 +17,18 @@ describe('validateShowpack', () => {
     }
   });
 
+  it('rejects packs larger than the prerecorded eight-player voice bank', () => {
+    const pack = makeTestShowpack();
+    pack.manifest.maxPlayers = 9;
+
+    const result = validateShowpack(pack);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.some((issue) => issue.path.includes('/manifest/maxPlayers'))).toBe(true);
+    }
+  });
+
   it('rejects a missing independent wrong-answer reaction', () => {
     const pack = makeTestShowpack();
     delete pack.episode.rounds[0]!.questions[0]!.wrongAnswerReactions['wrong-b'];
