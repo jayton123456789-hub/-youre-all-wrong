@@ -174,10 +174,7 @@ function playerPartsForGroup(
   ];
 }
 
-function revealPresentationParts(
-  state: GameState,
-  question: Question,
-): HostPresentation['parts'] {
+function revealPresentationParts(state: GameState, question: Question): HostPresentation['parts'] {
   if (!state.reveal) return [];
 
   const groups = groupRevealResults(state, question, state.reveal.playerResults);

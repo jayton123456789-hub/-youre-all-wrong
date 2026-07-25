@@ -18,17 +18,17 @@ properly licensed for redistribution.
 
 The private ZIP was inspected without adding it to the repository:
 
-| Reference role | Approximate duration |
-| --- | ---: |
-| Title screen | 83.0 s |
-| Main theme | 90.5 s |
-| Special-round theme | 128.1 s |
-| Waiting/lobby cue | 67.9 s |
-| Question-in-session jingle collection | 492.2 s |
-| Question-answered jingle collection | 276.8 s |
-| Intermission | 110.3 s |
-| High-danger sting | 30.4 s |
-| Ending tune collection | 61.0 s |
+| Reference role                        | Approximate duration |
+| ------------------------------------- | -------------------: |
+| Title screen                          |               83.0 s |
+| Main theme                            |               90.5 s |
+| Special-round theme                   |              128.1 s |
+| Waiting/lobby cue                     |               67.9 s |
+| Question-in-session jingle collection |              492.2 s |
+| Question-answered jingle collection   |              276.8 s |
+| Intermission                          |              110.3 s |
+| High-danger sting                     |               30.4 s |
+| Ending tune collection                |               61.0 s |
 
 Durations are recorded only to estimate how much original material the game
 will eventually need.
