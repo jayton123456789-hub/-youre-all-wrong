@@ -1,6 +1,7 @@
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, extname, join, resolve } from 'node:path';
 
 import {
   app,
@@ -12,6 +13,7 @@ import {
   type IpcMainInvokeEvent,
   type UtilityProcess,
 } from 'electron';
+import { unzipSync } from 'fflate';
 
 import { buildEpisodeAuthorKitArchive, EPISODE_AUTHOR_KIT_FILENAME } from './episode-author-kit.js';
 import type { DesktopAuthorKitResult, DesktopEpisodeActionResult } from './episode-contract.js';
@@ -75,6 +77,39 @@ let voiceInstallationPromise: Promise<DesktopVoiceBootstrapResult> | null = null
 let interactiveVoiceSetupOpen = false;
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PRIVATE_MUSIC_SUBDIRECTORY = ['private-music', 'ydkj2011'] as const;
+
+function privateMusicDirectory(): string {
+  return join(app.getPath('userData'), ...PRIVATE_MUSIC_SUBDIRECTORY);
+}
+
+function originalOstArchiveCandidates(): string[] {
+  return [
+    join(process.resourcesPath, 'private-soundtrack', 'ORIGINALost.zIP.zip'),
+    join(desktopProjectRoot(), 'assets', 'private-soundtrack', 'ORIGINALost.zIP.zip'),
+    join(app.getPath('downloads'), 'ORIGINALost.zIP.zip'),
+  ];
+}
+
+function importOriginalOstIfPresent(): void {
+  const archivePath = originalOstArchiveCandidates().find((path) => existsSync(path));
+  if (!archivePath) return;
+  const outputDirectory = privateMusicDirectory();
+  mkdirSync(outputDirectory, { recursive: true });
+  const archive = unzipSync(new Uint8Array(readFileSync(archivePath)));
+  let imported = 0;
+  for (const [entryName, bytes] of Object.entries(archive)) {
+    if (extname(entryName).toLowerCase() !== '.mp3') continue;
+    const safeName = basename(entryName)
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, '')
+      .trim();
+    if (!safeName) continue;
+    writeFileSync(join(outputDirectory, safeName), Buffer.from(bytes));
+    imported += 1;
+  }
+  if (imported > 0) console.log(`Imported ${imported} soundtrack tracks.`);
+}
+
 function createRuntimeIdentity() {
   return {
     sessionId: randomUUID(),
@@ -175,6 +210,7 @@ function startRuntime(window: BrowserWindow): void {
   const runtimeEntry = join(__dirname, 'runtime-process.cjs');
   const isDevelopment = Boolean(process.env.YAW_DEV_WEB_URL);
   const webRoot = join(desktopProjectRoot(), 'dist', 'web');
+  importOriginalOstIfPresent();
   const runtimeVoiceEnvironment = buildRuntimeVoiceEnvironment({
     inheritedEnvironment: process.env,
     selection: activeVoice,
@@ -195,7 +231,7 @@ function startRuntime(window: BrowserWindow): void {
       YAW_SHOWPACK_PATH: activeEpisode.packPath ?? '',
       YAW_SHOWPACK_ASSET_ROOT: activeEpisode.assetRoot ?? '',
       YAW_SHOWPACK_ARCHIVE_PATH: activeEpisode.archivePath ?? '',
-      YAW_PRIVATE_MUSIC_PATH: join(app.getPath('userData'), 'private-music', 'ydkj2011'),
+      YAW_PRIVATE_MUSIC_PATH: privateMusicDirectory(),
       ...(isDevelopment
         ? { YAW_PUBLIC_WEB_PORT: new URL(process.env.YAW_DEV_WEB_URL!).port || '5173' }
         : { YAW_WEB_ROOT: webRoot }),

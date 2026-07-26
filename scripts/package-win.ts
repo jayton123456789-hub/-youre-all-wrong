@@ -40,7 +40,11 @@ try {
     asar: true,
     prune: true,
     icon: resolve(projectRoot, 'assets/branding/app-icon.ico'),
-    extraResource: [...voiceResources.filter((path) => path !== hostVoiceSource), stagedHostVoice],
+    extraResource: [
+      ...voiceResources.filter((path) => path !== hostVoiceSource),
+      stagedHostVoice,
+      resolve(projectRoot, 'assets/private-soundtrack'),
+    ],
     ignore: [
       /^\/\.git(?:\/|$)/,
       /^\/\.github(?:\/|$)/,
@@ -77,6 +81,7 @@ await Promise.all([
   access(resolve(packagePath, 'resources', 'host-voice', 'profile.json')),
   access(resolve(packagePath, 'resources', 'host-voice', 'reference.wav')),
   access(resolve(packagePath, 'resources', 'host-voice', 'provenance.json')),
+  access(resolve(packagePath, 'resources', 'private-soundtrack', 'ORIGINALost.zIP.zip')),
 ]);
 await flipFuses(executablePath, {
   version: FuseVersion.V1,

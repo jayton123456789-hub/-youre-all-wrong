@@ -16,8 +16,8 @@ const trackPattern: Record<ShowPhase, RegExp | null> = {
   intro: /main theme/i,
   question: /question in session/i,
   reveal: /question answered/i,
-  finale: /you are so screwed/i,
-  complete: /game ending/i,
+  finale: /ending tunes|you are so screwed/i,
+  complete: /ending tunes|game ending/i,
 };
 
 interface SynthLoop {
