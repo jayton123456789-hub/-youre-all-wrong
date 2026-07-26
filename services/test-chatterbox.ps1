@@ -2,7 +2,9 @@
 param(
   [string]$OutputPath = '.yallwrong/chatterbox-smoke.wav',
   [string]$ReferencePath = '',
-  [string]$Text = "You're all wrong. The host voice is online.",
+  [ValidateSet('original', 'turbo')]
+  [string]$Model = 'original',
+  [string]$Text = "You're all wrong. The local voice pipeline is online.",
   [switch]$Force
 )
 
@@ -26,6 +28,9 @@ if (-not (Test-Path -LiteralPath $python)) {
 if (-not (Test-Path -LiteralPath $worker)) {
   throw "Chatterbox worker launcher is missing at $worker."
 }
+if ($Model -eq 'turbo' -and [string]::IsNullOrWhiteSpace($ReferencePath)) {
+  throw 'The Turbo smoke test requires -ReferencePath.'
+}
 
 [System.IO.Directory]::CreateDirectory($manifestDirectory) | Out-Null
 if ($Force -and (Test-Path -LiteralPath $output)) {
@@ -34,29 +39,34 @@ if ($Force -and (Test-Path -LiteralPath $output)) {
 
 $previousReference = $env:YAW_CHATTERBOX_REFERENCE
 $previousDevice = $env:YAW_CHATTERBOX_DEVICE
+$previousModel = $env:YAW_CHATTERBOX_MODEL
+$previousAllowDefault = $env:YAW_CHATTERBOX_ALLOW_DEFAULT
 try {
   $env:YAW_CHATTERBOX_DEVICE = 'cuda'
+  $env:YAW_CHATTERBOX_MODEL = $Model
   if (-not [string]::IsNullOrWhiteSpace($ReferencePath)) {
     $reference = [System.IO.Path]::GetFullPath($ReferencePath)
     if (-not (Test-Path -LiteralPath $reference)) {
       throw "Reference voice clip does not exist: $reference"
     }
     $env:YAW_CHATTERBOX_REFERENCE = $reference
+    Remove-Item Env:YAW_CHATTERBOX_ALLOW_DEFAULT -ErrorAction SilentlyContinue
   } else {
     Remove-Item Env:YAW_CHATTERBOX_REFERENCE -ErrorAction SilentlyContinue
+    $env:YAW_CHATTERBOX_ALLOW_DEFAULT = '1'
   }
 
   $manifest = @{
     protocolVersion = 1
-    voiceName = 'Chatterbox smoke test'
+    voiceName = 'Chatterbox pipeline smoke test'
     jobs = @(
       @{
         cueId = 'runtime-chatterbox-smoke'
         outputPath = $output
         text = $Text
-        delivery = 'announcer'
-        pacePermille = 960
-        energyPermille = 700
+        delivery = 'conversational'
+        pacePermille = 1000
+        energyPermille = 550
         pronunciation = @{}
       }
     )
@@ -68,8 +78,7 @@ try {
     [System.Text.UTF8Encoding]::new($false)
   )
 
-  Write-Host 'Loading Chatterbox on CUDA and generating one test line...'
-  Write-Host 'The first run downloads the model weights and can take several minutes.'
+  Write-Host "Loading Chatterbox $Model on CUDA and generating one pipeline test line..."
   & $worker -ManifestPath $manifestPath
   if ($LASTEXITCODE -ne 0) {
     throw "Chatterbox smoke worker exited with code $LASTEXITCODE."
@@ -84,20 +93,24 @@ try {
   }
 
   Write-Host ''
-  Write-Host 'Chatterbox CUDA smoke test passed.'
+  Write-Host 'Chatterbox CUDA pipeline smoke test passed.'
+  Write-Host "Model: $Model"
   Write-Host "WAV: $output"
   Write-Host "Bytes: $($file.Length)"
   Start-Process -FilePath $output
 } finally {
   Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
-  if ($null -eq $previousReference) {
-    Remove-Item Env:YAW_CHATTERBOX_REFERENCE -ErrorAction SilentlyContinue
-  } else {
-    $env:YAW_CHATTERBOX_REFERENCE = $previousReference
-  }
-  if ($null -eq $previousDevice) {
-    Remove-Item Env:YAW_CHATTERBOX_DEVICE -ErrorAction SilentlyContinue
-  } else {
-    $env:YAW_CHATTERBOX_DEVICE = $previousDevice
+
+  foreach ($setting in @(
+      @{ Name = 'YAW_CHATTERBOX_REFERENCE'; Value = $previousReference },
+      @{ Name = 'YAW_CHATTERBOX_DEVICE'; Value = $previousDevice },
+      @{ Name = 'YAW_CHATTERBOX_MODEL'; Value = $previousModel },
+      @{ Name = 'YAW_CHATTERBOX_ALLOW_DEFAULT'; Value = $previousAllowDefault }
+    )) {
+    if ($null -eq $setting.Value) {
+      Remove-Item "Env:$($setting.Name)" -ErrorAction SilentlyContinue
+    } else {
+      Set-Item "Env:$($setting.Name)" $setting.Value
+    }
   }
 }

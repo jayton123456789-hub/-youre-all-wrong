@@ -2,15 +2,21 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowCounterClockwise,
   ArrowUp,
   Check,
   CircleNotch,
+  Copy,
   Crown,
   DeviceMobile,
+  DownloadSimple,
   Fire,
+  FileArrowUp,
   Lightning,
   LockKey,
+  Package,
   Play,
+  Sparkle,
   Skull,
   SpeakerHigh,
   SpeakerSlash,
@@ -18,11 +24,14 @@ import {
   Waveform,
   WifiHigh,
   WifiSlash,
+  Wrench,
+  X,
 } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -32,7 +41,14 @@ import {
 import { io, type Socket } from 'socket.io-client';
 
 import type { Cue } from '../domain/showpack/schema.js';
+import { EPISODE_AI_STARTER_PROMPT } from '../domain/showpack/author-prompt.js';
+import type { VoicePreflightActivity } from '../domain/voice/preflight.js';
 import type { GameSnapshot, HostPresentation } from '../domain/game/types.js';
+import type { DesktopEpisodeState } from '../desktop/episode-contract.js';
+import type {
+  DesktopVoiceBootstrapState,
+  VoiceInstallationProgress,
+} from '../desktop/voice-installation.js';
 import type {
   AttachSuccess,
   ClientToServerEvents,
@@ -50,6 +66,7 @@ import {
 } from './runtime.js';
 import { playUiSound } from './sound.js';
 import { useEpisodeVoice } from './useEpisodeVoice.js';
+import { usePrivateSoundtrack } from './private-soundtrack.js';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type HostAction =
@@ -69,6 +86,13 @@ const DIRECTIONS = [
   { name: 'RIGHT', className: 'right', icon: ArrowRight },
   { name: 'DOWN', className: 'down', icon: ArrowDown },
 ] as const;
+
+// The projectile waits 100 ms, flies for 700 ms, then gets a small render margin
+// before the score card settles and removes it from the tree.
+const SCORE_PROJECTILE_SETTLE_MS = 850;
+const CATEGORY_CARD_MINIMUM_MS = 1_800;
+const ANSWER_NARRATION_RATE = 1.16;
+const ANSWER_NARRATION_PAUSE_SCALE = 0.3;
 
 function useClock(intervalMs = 100): number {
   const [now, setNow] = useState(Date.now());
@@ -194,36 +218,82 @@ function Timer({
   );
 }
 
+export function orderScoreboardPlayers(
+  players: GameSnapshot['players'],
+  scoreOverrides: Record<string, number> = {},
+  stableTieOrder?: readonly string[],
+): Array<{ player: GameSnapshot['players'][number]; score: number }> {
+  const sourceOrder = new Map(players.map((player, index) => [player.id, index]));
+  const stableOrder = stableTieOrder
+    ? new Map(stableTieOrder.map((playerId, index) => [playerId, index]))
+    : null;
+  const compareTiedPlayers = (
+    a: GameSnapshot['players'][number],
+    b: GameSnapshot['players'][number],
+  ): number => {
+    if (!stableOrder) {
+      return (
+        (sourceOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+          (sourceOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)
+      );
+    }
+
+    const aPosition = stableOrder.get(a.id);
+    const bPosition = stableOrder.get(b.id);
+    if (aPosition !== undefined && bPosition !== undefined) return aPosition - bPosition;
+    if (aPosition !== undefined) return -1;
+    if (bPosition !== undefined) return 1;
+    return a.id.localeCompare(b.id);
+  };
+
+  return [...players]
+    .map((player) => ({
+      player,
+      score: scoreOverrides[player.id] ?? player.score,
+    }))
+    .sort((a, b) => b.score - a.score || compareTiedPlayers(a.player, b.player));
+}
+
 function Scoreboard({
   snapshot,
   compact = false,
   scoreOverrides = {},
   changedPlayerIds = new Set<string>(),
+  stableTieOrder,
 }: {
   snapshot: GameSnapshot;
   compact?: boolean;
   scoreOverrides?: Record<string, number>;
   changedPlayerIds?: Set<string>;
+  stableTieOrder?: readonly string[];
 }) {
+  const displayedPlayers = orderScoreboardPlayers(snapshot.players, scoreOverrides, stableTieOrder);
+  let previousScore: number | null = null;
+  let previousRank = 0;
+
   return (
     <div className={`scoreboard ${compact ? 'scoreboard--compact' : ''}`}>
-      {snapshot.players.map((player) => (
-        <div
-          className={`score-card ${changedPlayerIds.has(player.id) ? 'is-score-hit' : ''}`}
-          key={player.id}
-        >
-          <div className="score-card__rank">
-            {player.rank === 1 ? <Crown weight="fill" /> : `#${player.rank}`}
+      {displayedPlayers.map(({ player, score }, index) => {
+        const rank = previousScore === score ? previousRank : index + 1;
+        previousScore = score;
+        previousRank = rank;
+        return (
+          <div
+            className={`score-card ${changedPlayerIds.has(player.id) ? 'is-score-hit' : ''}`}
+            data-score-player-id={player.id}
+            key={player.id}
+          >
+            <div className="score-card__rank">
+              {rank === 1 ? <Crown weight="fill" /> : `#${rank}`}
+            </div>
+            <div className="score-card__identity">
+              <span className="score-card__name">{player.name}</span>
+              {!player.connected && <span className="score-card__away">signal lost</span>}
+            </div>
+            <span className="score-card__score">{score.toLocaleString()}</span>
           </div>
-          <div className="score-card__identity">
-            <span className="score-card__name">{player.name}</span>
-            {!player.connected && <span className="score-card__away">signal lost</span>}
-          </div>
-          <span className="score-card__score">
-            {(scoreOverrides[player.id] ?? player.score).toLocaleString()}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -248,9 +318,23 @@ function LoadingStage({ message }: { message: string }) {
     <main className="loading-stage">
       <div className="signal-field" aria-hidden="true" />
       <Brand />
-      <div className="loading-stage__meter">
-        <CircleNotch className="spinner" weight="bold" />
+      <div className="loading-stage__console">
+        <div className="loading-stage__status">
+          <Waveform weight="bold" />
+          <span>BOOTING SHOW CONTROL</span>
+        </div>
+        <div className="loading-stage__meter">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
         <p>{message}</p>
+        <div className="loading-stage__subline">
+          <CircleNotch className="spinner" weight="bold" />
+          <span>Checking room, voice cache, and local network</span>
+        </div>
       </div>
     </main>
   );
@@ -293,30 +377,76 @@ function StageCaption({ cue, speaking }: { cue: Cue | null; speaking: boolean })
   );
 }
 
+export function voiceActivityPresentation(activity: VoicePreflightActivity | null): {
+  mode: 'cooking' | 'retry' | 'rescue';
+  label: 'COOKING THE HOST' | 'QUALITY PASS' | 'QUALITY RESCUE';
+  recovered: boolean;
+} {
+  if (!activity) return { mode: 'cooking', label: 'COOKING THE HOST', recovered: false };
+  if (activity.type === 'quality-retry') {
+    return { mode: 'retry', label: 'QUALITY PASS', recovered: false };
+  }
+  return {
+    mode: 'rescue',
+    label: 'QUALITY RESCUE',
+    recovered:
+      activity.type === 'quality-rescue-recovered' ||
+      (activity.type === 'quality-rescue-complete' && activity.failedCount === 0),
+  };
+}
+
 function VoicePreflightPanel({
-  phase,
-  completed,
-  total,
-  rendered,
-  cached,
-  voiceName,
-  message,
-}: ReturnType<typeof useEpisodeVoice>['progress']) {
+  progress: { phase, completed, total, rendered, cached, voiceName, message, activity },
+  installationState,
+  installationProgress,
+  installationBusy,
+  onInstall,
+}: {
+  progress: ReturnType<typeof useEpisodeVoice>['progress'];
+  installationState: DesktopVoiceBootstrapState | null;
+  installationProgress: VoiceInstallationProgress | null;
+  installationBusy: boolean;
+  onInstall: () => void;
+}) {
   const progress = total > 0 ? completed / total : 0;
   const ready = phase === 'ready';
   const failed = phase === 'error';
+  const activityPresentation = voiceActivityPresentation(activity);
+  const retrying = activityPresentation.mode === 'retry';
+  const rescuing = activityPresentation.mode === 'rescue';
+  const recovered = activityPresentation.recovered;
+  const canInstall =
+    failed &&
+    (installationState?.state === 'installable' || installationState?.state === 'repairable');
+  const displayedMessage = installationProgress?.message ?? message;
   return (
     <aside
-      className={`voice-preflight ${ready ? 'is-ready' : ''} ${failed ? 'is-error' : ''}`}
+      className={`voice-preflight ${ready ? 'is-ready' : ''} ${failed ? 'is-error' : ''} ${
+        retrying ? 'is-retrying' : ''
+      } ${rescuing ? 'is-rescuing' : ''} ${recovered ? 'is-recovered' : ''}`}
       aria-live="polite"
     >
       <div className="voice-preflight__top">
         <span className="voice-preflight__icon">
-          {ready ? <Check weight="bold" /> : <Waveform weight="bold" />}
+          {ready ? (
+            <Check weight="bold" />
+          ) : recovered ? (
+            <Check weight="bold" />
+          ) : retrying ? (
+            <ArrowCounterClockwise weight="bold" />
+          ) : rescuing ? (
+            <ArrowCounterClockwise weight="bold" />
+          ) : (
+            <Waveform weight="bold" />
+          )}
         </span>
         <div>
           <small>
-            {ready ? 'HOST TRACK LOCKED' : failed ? 'VOICE COOK FAILED' : 'COOKING THE HOST'}
+            {ready
+              ? 'HOST TRACK LOCKED'
+              : failed
+                ? 'VOICE COOK FAILED'
+                : activityPresentation.label}
           </small>
           <strong>{voiceName}</strong>
         </div>
@@ -327,7 +457,24 @@ function VoicePreflightPanel({
       <div className="voice-preflight__track">
         <i style={{ width: `${Math.round(progress * 100)}%` }} />
       </div>
-      <p>{message}</p>
+      <p>{displayedMessage}</p>
+      {canInstall && (
+        <div className="voice-preflight__repair">
+          <span>One-time local setup may download several gigabytes.</span>
+          <button type="button" disabled={installationBusy} onClick={onInstall}>
+            {installationBusy ? (
+              <CircleNotch className="spinner" weight="bold" />
+            ) : (
+              <Wrench weight="bold" />
+            )}
+            {installationBusy
+              ? 'INSTALLING HOST…'
+              : installationState.state === 'repairable'
+                ? 'REPAIR HOST'
+                : 'INSTALL HOST'}
+          </button>
+        </div>
+      )}
       {ready && (
         <div className="voice-preflight__facts">
           <span>{rendered} fresh</span>
@@ -336,6 +483,248 @@ function VoicePreflightPanel({
         </div>
       )}
     </aside>
+  );
+}
+
+function EpisodeLibraryPanel({
+  active,
+  busy,
+  notice,
+  error,
+  desktopAvailable,
+  onChoose,
+  onUseDemo,
+  onOpenAuthorKit,
+}: {
+  active: DesktopEpisodeState | null;
+  busy: boolean;
+  notice: string | null;
+  error: string | null;
+  desktopAvailable: boolean;
+  onChoose: () => void;
+  onUseDemo: () => void;
+  onOpenAuthorKit: () => void;
+}) {
+  return (
+    <aside className={`episode-library ${notice || error ? 'has-notice' : ''}`} aria-live="polite">
+      <div className="episode-library__identity">
+        <span>
+          ACTIVE SHOW ·{' '}
+          {active?.episode.source === 'custom' ? 'CUSTOM EPISODE' : 'BUNDLED PREMIERE'}
+        </span>
+        <strong>{active?.episode.title ?? 'Current runtime episode'}</strong>
+        {active?.episode.author && <small>Written by {active.episode.author}</small>}
+      </div>
+      <div className="episode-library__actions">
+        <button
+          className="episode-library__button episode-library__button--author"
+          disabled={busy}
+          onClick={onOpenAuthorKit}
+          title="Download the complete AI episode author kit"
+        >
+          <Sparkle weight="fill" />
+          MAKE EPISODE
+        </button>
+        {desktopAvailable && (
+          <>
+            <button
+              className="episode-library__button"
+              disabled={busy}
+              onClick={onChoose}
+              title="Load a validated .json or .showpack episode"
+            >
+              {busy ? (
+                <CircleNotch className="spinner" weight="bold" />
+              ) : (
+                <FileArrowUp weight="bold" />
+              )}
+              LOAD EPISODE
+            </button>
+            {(active?.episode.source === 'custom' || active?.warning) && (
+              <button
+                className="episode-library__button episode-library__button--quiet"
+                disabled={busy}
+                onClick={onUseDemo}
+                title="Return to the bundled premiere episode"
+              >
+                <ArrowCounterClockwise weight="bold" />
+                USE DEMO
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {!desktopAvailable && (
+        <small className="episode-library__browser-note">
+          Download and loading are available in the desktop host.
+        </small>
+      )}
+      {(error || notice || active?.warning) && (
+        <p className={error || active?.warning ? 'is-error' : ''}>
+          {error ?? active?.warning ?? notice}
+        </p>
+      )}
+    </aside>
+  );
+}
+
+function EpisodeAuthorKitModal({
+  open,
+  busy,
+  notice,
+  error,
+  desktopAvailable,
+  onClose,
+  onDownload,
+}: {
+  open: boolean;
+  busy: boolean;
+  notice: string | null;
+  error: string | null;
+  desktopAvailable: boolean;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setCopied(false);
+      return;
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) onClose();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [busy, onClose, open]);
+
+  if (!open) return null;
+
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(EPISODE_AI_STARTER_PROMPT);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+      playUiSound('lock');
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div
+      className="author-kit-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <section
+        className="author-kit-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="author-kit-title"
+      >
+        <div className="author-kit-dialog__flare" aria-hidden="true" />
+        <header className="author-kit-dialog__header">
+          <div className="author-kit-dialog__mark" aria-hidden="true">
+            <Package weight="duotone" />
+          </div>
+          <div>
+            <span>THE UNREASONABLY COMPLETE AI AUTHOR KIT</span>
+            <h2 id="author-kit-title">BUILD A SHOW. SPOIL NOTHING.</h2>
+            <p>
+              Download one ZIP, attach it to any capable AI, describe your group, and get back an
+              episode this game can validate, voice, cache, and play.
+            </p>
+          </div>
+          <button
+            className="author-kit-dialog__close"
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close episode author kit"
+          >
+            <X weight="bold" />
+          </button>
+        </header>
+
+        <div className="author-kit-dialog__steps" aria-label="Episode creation steps">
+          <article>
+            <b>01</b>
+            <span>ATTACH</span>
+            <p>Give the untouched ZIP to ChatGPT, Claude, Gemini, or another file-capable AI.</p>
+          </article>
+          <article>
+            <b>02</b>
+            <span>DESCRIBE</span>
+            <p>Tell it the topics, inside jokes, rating, player knowledge, and desired length.</p>
+          </article>
+          <article>
+            <b>03</b>
+            <span>IMPORT</span>
+            <p>Keep the returned episode.json unread, then bring it back with LOAD EPISODE.</p>
+          </article>
+        </div>
+
+        <div className="author-kit-dialog__body">
+          <div className="author-kit-dialog__included">
+            <span>WHAT THE ZIP TEACHES THE AI</span>
+            <ul>
+              <li>Every supported scene, question, reaction, callback, and finale rule</li>
+              <li>Display text versus natural spoken performance text</li>
+              <li>Voice timing, comedy beats, interruption safety, and pronunciation</li>
+              <li>Three full 2011 transcript references with a tone and pacing study</li>
+              <li>Strict JSON Schema, validated starter, and a complete working episode</li>
+              <li>Fact sourcing, asset licensing, content boundaries, and final QA</li>
+            </ul>
+          </div>
+          <div className="author-kit-dialog__prompt">
+            <div>
+              <span>COPY THIS WITH YOUR TOPICS FILLED IN</span>
+              <button type="button" onClick={() => void copyPrompt()}>
+                {copied ? <Check weight="bold" /> : <Copy weight="bold" />}
+                {copied ? 'COPIED' : 'COPY PROMPT'}
+              </button>
+            </div>
+            <textarea
+              aria-label="AI episode starter prompt"
+              readOnly
+              spellCheck={false}
+              value={EPISODE_AI_STARTER_PROMPT}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </div>
+        </div>
+
+        <footer className="author-kit-dialog__footer">
+          <div>
+            <strong>YOUR ANSWERS STAY A SURPRISE.</strong>
+            <span>The game rejects broken packs before they can wreck show night.</span>
+          </div>
+          <button
+            className="author-kit-dialog__download"
+            type="button"
+            disabled={!desktopAvailable || busy}
+            onClick={onDownload}
+          >
+            {busy ? (
+              <CircleNotch className="spinner" weight="bold" />
+            ) : (
+              <DownloadSimple weight="bold" />
+            )}
+            {busy ? 'BUILDING KIT…' : 'DOWNLOAD AUTHOR KIT'}
+          </button>
+        </footer>
+        {(notice || error || !desktopAvailable) && (
+          <p className={`author-kit-dialog__notice ${error ? 'is-error' : ''}`}>
+            {error ??
+              notice ??
+              'Open this screen in the desktop host to save the complete ZIP author kit.'}
+          </p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -360,10 +749,26 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
   const [directorPlaying, setDirectorPlaying] = useState(false);
   const [activeRevealPlayerId, setActiveRevealPlayerId] = useState<string | null>(null);
   const [revealOutcome, setRevealOutcome] = useState<'neutral' | 'correct' | 'wrong'>('neutral');
+  const [scoreFlight, setScoreFlight] = useState<{ x: number; y: number } | null>(null);
   const [settledRevealPlayers, setSettledRevealPlayers] = useState<Set<string>>(new Set());
+  const [episodeLibrary, setEpisodeLibrary] = useState<DesktopEpisodeState | null>(null);
+  const [episodeLibraryBusy, setEpisodeLibraryBusy] = useState(false);
+  const [episodeLibraryNotice, setEpisodeLibraryNotice] = useState<string | null>(null);
+  const [episodeLibraryError, setEpisodeLibraryError] = useState<string | null>(null);
+  const [episodeRestarting, setEpisodeRestarting] = useState(false);
+  const [authorKitOpen, setAuthorKitOpen] = useState(false);
+  const [authorKitBusy, setAuthorKitBusy] = useState(false);
+  const [authorKitNotice, setAuthorKitNotice] = useState<string | null>(null);
+  const [authorKitError, setAuthorKitError] = useState<string | null>(null);
+  const [voiceInstallationState, setVoiceInstallationState] =
+    useState<DesktopVoiceBootstrapState | null>(null);
+  const [voiceInstallationProgress, setVoiceInstallationProgress] =
+    useState<VoiceInstallationProgress | null>(null);
+  const [voiceInstallationBusy, setVoiceInstallationBusy] = useState(false);
   const attachEpoch = useRef(0);
   const snapshotRef = useRef<GameSnapshot | null>(null);
   const completedSequences = useRef(new Set<string>());
+  usePrivateSoundtrack(secrets.runtimeOrigin, secrets.hostSecret, snapshot?.phase, muted);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -372,6 +777,57 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
   useEffect(() => {
     voice.bank?.setMuted(muted);
   }, [muted, voice.bank]);
+
+  useEffect(() => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop) return;
+    let mounted = true;
+    const removeRuntimeFailureListener = desktop.episode.onRuntimeFailure((state) => {
+      if (!mounted) return;
+      setEpisodeLibrary(state);
+      setEpisodeRestarting(false);
+      setEpisodeLibraryBusy(false);
+      setEpisodeLibraryNotice(null);
+      setEpisodeLibraryError(
+        state.warning ?? 'The custom episode failed. The bundled demo is being restored.',
+      );
+    });
+    void desktop.episode
+      .getActive()
+      .then((state) => {
+        if (mounted) setEpisodeLibrary(state);
+      })
+      .catch((reason: unknown) => {
+        if (mounted) {
+          setEpisodeLibraryError(
+            reason instanceof Error ? reason.message : 'The episode library did not answer.',
+          );
+        }
+      });
+    return () => {
+      mounted = false;
+      removeRuntimeFailureListener();
+    };
+  }, []);
+
+  useEffect(() => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop) return;
+    let mounted = true;
+    const removeProgressListener = desktop.voice.onInstallationProgress((progress) => {
+      if (mounted) setVoiceInstallationProgress(progress);
+    });
+    void desktop.voice
+      .getInstallationState()
+      .then((state) => {
+        if (mounted) setVoiceInstallationState(state);
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+      removeProgressListener();
+    };
+  }, []);
 
   useEffect(() => {
     if (!socket || !connected || !info || !secrets.hostSecret) return;
@@ -456,6 +912,33 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
       });
 
     const playAuthoredPresentation = async () => {
+      if (presentation.stage === 'prompt') {
+        for (const part of presentation.parts) {
+          const startedAt = performance.now();
+          await playPart(part);
+          if (part.id === 'category') {
+            await waitForBeat(
+              Math.max(0, CATEGORY_CARD_MINIMUM_MS - (performance.now() - startedAt)),
+              controller.signal,
+            );
+          }
+        }
+        return;
+      }
+
+      if (presentation.stage === 'answers') {
+        await voice.bank!.playSequence(presentation.cues, {
+          signal: controller.signal,
+          playbackRate: ANSWER_NARRATION_RATE,
+          pauseScale: ANSWER_NARRATION_PAUSE_SCALE,
+          onCue: (cue) => {
+            setActiveCue(cue);
+            if (cue) setActivePart(findPresentationPart(presentation, cue));
+          },
+        });
+        return;
+      }
+
       if (presentation.stage !== 'reveal') {
         await voice.bank!.playSequence(presentation.cues, {
           signal: controller.signal,
@@ -468,25 +951,45 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
       }
 
       setSettledRevealPlayers(new Set());
+      const pendingCorrectPlayerIds: string[] = [];
+      const settlePlayer = async (playerId: string, outcome: 'correct' | 'wrong') => {
+        setActiveRevealPlayerId(playerId);
+        setRevealOutcome(outcome);
+        playUiSound(outcome === 'correct' ? 'lock' : 'wrong');
+        await waitForBeat(SCORE_PROJECTILE_SETTLE_MS, controller.signal);
+        setSettledRevealPlayers((current) => new Set(current).add(playerId));
+        await waitForBeat(650, controller.signal);
+      };
       for (const part of presentation.parts) {
         const playerId = part.id.startsWith('player-') ? part.id.slice('player-'.length) : null;
         setActivePart(part.id);
         setActiveRevealPlayerId(playerId);
         setRevealOutcome('neutral');
         setActiveCue(null);
-        if (playerId) await waitForBeat(420, controller.signal);
+        if (playerId || part.id.startsWith('reaction-')) {
+          await waitForBeat(520, controller.signal);
+        }
         await playPart(part);
-        if (!playerId) continue;
+        if (!playerId) {
+          if (part.id === 'explanation') {
+            for (const pendingPlayerId of pendingCorrectPlayerIds.splice(0)) {
+              await settlePlayer(pendingPlayerId, 'correct');
+            }
+          }
+          continue;
+        }
 
         const result = snapshotRef.current?.reveal?.playerResults.find(
           (candidate) => candidate.playerId === playerId,
         );
-        const outcome = result?.correct ? 'correct' : 'wrong';
-        setRevealOutcome(outcome);
-        playUiSound(outcome === 'correct' ? 'lock' : 'wrong');
-        await waitForBeat(700, controller.signal);
-        setSettledRevealPlayers((current) => new Set(current).add(playerId));
-        await waitForBeat(650, controller.signal);
+        if (result?.correct) {
+          pendingCorrectPlayerIds.push(playerId);
+          continue;
+        }
+        await settlePlayer(playerId, 'wrong');
+      }
+      for (const playerId of pendingCorrectPlayerIds.splice(0)) {
+        await settlePlayer(playerId, 'correct');
       }
       setActiveRevealPlayerId(null);
       setRevealOutcome('neutral');
@@ -522,6 +1025,30 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
     return () => controller.abort();
   }, [presentationId, sendHostCommand, voice.bank]);
 
+  useLayoutEffect(() => {
+    const result = snapshotRef.current?.reveal?.playerResults.find(
+      (candidate) => candidate.playerId === activeRevealPlayerId,
+    );
+    if (!result || revealOutcome === 'neutral') {
+      setScoreFlight(null);
+      return;
+    }
+    const source = document.querySelector<HTMLElement>('.reveal-compass');
+    const target = [...document.querySelectorAll<HTMLElement>('[data-score-player-id]')].find(
+      (element) => element.dataset.scorePlayerId === result.playerId,
+    );
+    if (!source || !target) {
+      setScoreFlight(null);
+      return;
+    }
+    const sourceBounds = source.getBoundingClientRect();
+    const targetBounds = target.getBoundingClientRect();
+    setScoreFlight({
+      x: targetBounds.left + targetBounds.width / 2 - (sourceBounds.left + sourceBounds.width / 2),
+      y: targetBounds.top + targetBounds.height / 2 - (sourceBounds.top + sourceBounds.height / 2),
+    });
+  }, [activeRevealPlayerId, revealOutcome, snapshot?.revision]);
+
   if (!secrets.hostSecret) {
     return (
       <ErrorStage message="This host link is missing its private control key. Restart from the desktop app." />
@@ -533,14 +1060,16 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
   const firstJoinUrl = joinUrls[0] ?? '';
   const everyPlayerReady =
     snapshot.players.length > 0 && snapshot.players.every((player) => player.ready);
-  const canStart = voice.ready && everyPlayerReady && connected;
+  const canStart = voice.ready && everyPlayerReady && connected && !episodeRestarting;
   const question = snapshot.question;
   const questionVisual =
     question?.timingPhase === 'answering'
       ? 'answers'
       : activePart === 'prompt'
         ? 'prompt'
-        : 'category';
+        : activePart === 'question-number'
+          ? 'number'
+          : 'category';
   const finaleScoresVisible =
     snapshot.phase === 'complete' ||
     (activePart !== null && activePart !== 'calm-lead-in' && activePart !== 'title-drop');
@@ -548,6 +1077,30 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
     (result) => result.playerId === activeRevealPlayerId,
   );
   const activeRevealPlayer = snapshot.players.find((player) => player.id === activeRevealPlayerId);
+  const activeReactionKey = activePart?.startsWith('reaction-')
+    ? activePart.slice('reaction-'.length)
+    : null;
+  const activeReactionAnswerId =
+    activeReactionKey === null || activeReactionKey.startsWith('conditional-')
+      ? undefined
+      : activeReactionKey === 'no-answer'
+        ? null
+        : activeReactionKey;
+  const activeReactionResults =
+    activeReactionKey === null
+      ? []
+      : activeReactionKey.startsWith('conditional-')
+        ? (snapshot.reveal?.playerResults ?? [])
+        : (snapshot.reveal?.playerResults ?? []).filter(
+            (result) => result.answerId === activeReactionAnswerId,
+          );
+  const revealingCorrectAnswer = activePart === 'correct-answer' || activePart === 'explanation';
+  const activeReactionNames = activeReactionResults
+    .map(
+      (result) =>
+        snapshot.players.find((player) => player.id === result.playerId)?.name ?? 'UNKNOWN',
+    )
+    .join(', ');
   const revealScoreOverrides = Object.fromEntries(
     (snapshot.reveal?.playerResults ?? []).map((result) => {
       const finalScore =
@@ -575,6 +1128,112 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
     completedSequences.current.clear();
     await sendHostCommand('reset');
     setBusy(false);
+  };
+
+  const chooseEpisode = async () => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop || episodeLibraryBusy) return;
+    setEpisodeLibraryBusy(true);
+    setEpisodeLibraryNotice(null);
+    setEpisodeLibraryError(null);
+    try {
+      const result = await desktop.episode.choose();
+      if (!result.ok) {
+        if (!result.cancelled) setEpisodeLibraryError(result.message);
+        return;
+      }
+      setEpisodeLibrary({ episode: result.episode, warning: null });
+      setEpisodeRestarting(result.restarting);
+      setEpisodeLibraryNotice(
+        result.restarting ? 'Episode accepted. Rebuilding the room and cooking its audio…' : null,
+      );
+    } catch (reason) {
+      setEpisodeLibraryError(
+        reason instanceof Error ? reason.message : 'The episode could not be loaded.',
+      );
+    } finally {
+      setEpisodeLibraryBusy(false);
+    }
+  };
+
+  const useDemoEpisode = async () => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop || episodeLibraryBusy) return;
+    setEpisodeLibraryBusy(true);
+    setEpisodeLibraryNotice(null);
+    setEpisodeLibraryError(null);
+    try {
+      const result = await desktop.episode.useDemo();
+      if (!result.ok) {
+        if (!result.cancelled) setEpisodeLibraryError(result.message);
+        return;
+      }
+      setEpisodeLibrary({ episode: result.episode, warning: null });
+      setEpisodeRestarting(result.restarting);
+      setEpisodeLibraryNotice(
+        result.restarting ? 'Demo restored. Rebuilding the room and checking its audio…' : null,
+      );
+    } catch (reason) {
+      setEpisodeLibraryError(
+        reason instanceof Error ? reason.message : 'The bundled demo could not be restored.',
+      );
+    } finally {
+      setEpisodeLibraryBusy(false);
+    }
+  };
+
+  const downloadAuthorKit = async () => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop || authorKitBusy) return;
+    setAuthorKitBusy(true);
+    setAuthorKitNotice(null);
+    setAuthorKitError(null);
+    try {
+      const result = await desktop.episode.downloadAuthorKit();
+      if (!result.ok) {
+        if (!result.cancelled) setAuthorKitError(result.message);
+        return;
+      }
+      const fileName = result.filePath.split(/[\\/]/u).at(-1) ?? 'episode author kit';
+      setAuthorKitNotice(`${fileName} saved. Attach that ZIP to your AI and use the prompt above.`);
+      playUiSound('advance');
+    } catch (reason) {
+      setAuthorKitError(
+        reason instanceof Error ? reason.message : 'The episode author kit could not be saved.',
+      );
+    } finally {
+      setAuthorKitBusy(false);
+    }
+  };
+
+  const installHostVoice = async () => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop || voiceInstallationBusy) return;
+    setVoiceInstallationBusy(true);
+    setVoiceInstallationProgress({
+      stage: 'validating',
+      message: 'Validating the packaged host installer…',
+    });
+    try {
+      const result = await desktop.voice.install();
+      if (!result.ok) {
+        setVoiceInstallationProgress(null);
+        setError(result.message);
+        const state = await desktop.voice.getInstallationState();
+        setVoiceInstallationState(state);
+        return;
+      }
+      setVoiceInstallationState(result.state);
+      setVoiceInstallationProgress({
+        stage: 'ready',
+        message: 'Neural host verified. Restarting the room…',
+      });
+    } catch (reason) {
+      setVoiceInstallationProgress(null);
+      setError(reason instanceof Error ? reason.message : 'The neural host setup could not start.');
+    } finally {
+      setVoiceInstallationBusy(false);
+    }
   };
 
   return (
@@ -618,7 +1277,38 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                 No controller app. Same Wi-Fi. Four arrows and a legally unreasonable amount of
                 confidence.
               </p>
-              <VoicePreflightPanel {...voice.progress} />
+              <VoicePreflightPanel
+                progress={voice.progress}
+                installationState={voiceInstallationState}
+                installationProgress={voiceInstallationProgress}
+                installationBusy={voiceInstallationBusy}
+                onInstall={() => void installHostVoice()}
+              />
+              <EpisodeLibraryPanel
+                active={
+                  episodeLibrary ?? {
+                    episode: {
+                      id: snapshot.episode.id,
+                      title: snapshot.episode.title,
+                      author: '',
+                      source: 'demo',
+                    },
+                    warning: null,
+                  }
+                }
+                busy={episodeLibraryBusy || episodeRestarting}
+                notice={episodeLibraryNotice}
+                error={episodeLibraryError}
+                desktopAvailable={Boolean(window.youreAllWrongDesktop)}
+                onChoose={() => void chooseEpisode()}
+                onUseDemo={() => void useDemoEpisode()}
+                onOpenAuthorKit={() => {
+                  setAuthorKitOpen(true);
+                  setAuthorKitNotice(null);
+                  setAuthorKitError(null);
+                  playUiSound('advance');
+                }}
+              />
             </div>
             <div className="join-card">
               <div className="join-card__qr">
@@ -654,7 +1344,8 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                     style={{ '--delay': `${index * 80}ms` } as CSSProperties}
                   >
                     <span className={`player-ticket__status ${player.ready ? 'is-ready' : ''}`}>
-                      {player.ready ? <Check weight="bold" /> : index + 1}
+                      <b>{index + 1}</b>
+                      {player.ready && <Check weight="bold" />}
                     </span>
                     <strong>{player.name}</strong>
                     <small>{player.ready ? 'READY TO BE WRONG' : 'CHECK YOUR PHONE'}</small>
@@ -684,6 +1375,25 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                   FIRST TAP FINAL
                 </span>
               </div>
+            </div>
+            <StageCaption cue={activeCue} speaking={directorPlaying} />
+          </div>
+        )}
+
+        {snapshot.phase === 'question' && question && questionVisual === 'number' && (
+          <div className="question-number-slate" key={`${question.id}-number`}>
+            <div className="question-number-slate__ghost" aria-hidden="true">
+              {String(question.number).padStart(2, '0')}
+            </div>
+            <div className="question-number-slate__label">NEXT LIABILITY</div>
+            <div className="question-number-slate__number">
+              <span>QUESTION</span>
+              <strong>{String(question.number).padStart(2, '0')}</strong>
+            </div>
+            <div className="question-number-slate__progress" aria-label="Question progress">
+              {Array.from({ length: question.total }, (_, index) => (
+                <i className={index < question.number ? 'is-lit' : ''} key={index} />
+              ))}
             </div>
             <StageCaption cue={activeCue} speaking={directorPlaying} />
           </div>
@@ -774,6 +1484,10 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
 
         {snapshot.phase === 'reveal' && snapshot.reveal && (
           <div className="reveal-stage">
+            <div className="reveal-stage__question">
+              <span>{snapshot.reveal.category}</span>
+              <h1>{snapshot.reveal.promptText}</h1>
+            </div>
             <div
               className={`reveal-player-arena is-${revealOutcome} ${
                 activeRevealPlayerId ? 'has-player' : 'is-wrap-up'
@@ -784,17 +1498,22 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                 <strong>
                   {activeRevealPlayer
                     ? `${activeRevealPlayer.name.toUpperCase()}'S CHOICE`
-                    : 'THE ACTUAL ANSWER'}
+                    : activeReactionKey
+                      ? `${activeReactionNames.toUpperCase()} LOCKED THIS`
+                      : 'THE ACTUAL ANSWER'}
                 </strong>
               </div>
               <div className="reveal-compass">
                 {snapshot.reveal.answers.map((answer, index) => {
                   const direction = DIRECTIONS[index]!;
                   const Icon = direction.icon;
-                  const selected = activeRevealResult?.answerId === answer.id;
+                  const selected =
+                    activeRevealResult?.answerId === answer.id ||
+                    activeReactionAnswerId === answer.id ||
+                    (revealingCorrectAnswer && snapshot.reveal?.correctAnswerId === answer.id);
                   const verdictClass =
-                    selected && revealOutcome !== 'neutral'
-                      ? activeRevealResult?.correct
+                    selected && (revealOutcome !== 'neutral' || revealingCorrectAnswer)
+                      ? revealingCorrectAnswer || activeRevealResult?.correct
                         ? 'is-correct'
                         : 'is-wrong'
                       : '';
@@ -815,10 +1534,17 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                     <Check weight="bold" />
                   ) : revealOutcome === 'wrong' ? (
                     <Fire weight="fill" />
+                  ) : activeReactionKey ? (
+                    <UsersThree weight="fill" />
                   ) : (
                     <LockKey weight="fill" />
                   )}
-                  <strong>{activeRevealPlayer?.name ?? 'HOST'}</strong>
+                  <strong>
+                    {activeRevealPlayer?.name ??
+                      (activeReactionKey
+                        ? `${activeReactionResults.length} PLAYER${activeReactionResults.length === 1 ? '' : 'S'}`
+                        : 'HOST')}
+                  </strong>
                   {activeRevealResult && (
                     <small>
                       {revealOutcome === 'neutral'
@@ -829,11 +1555,19 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                 </div>
                 {activeRevealResult &&
                   revealOutcome !== 'neutral' &&
-                  !settledRevealPlayers.has(activeRevealResult.playerId) && (
+                  !settledRevealPlayers.has(activeRevealResult.playerId) &&
+                  scoreFlight && (
                     <div
                       className={`score-projectile ${
                         activeRevealResult.correct ? 'is-credit' : 'is-debit'
                       }`}
+                      key={`${activeRevealResult.playerId}-${revealOutcome}`}
+                      style={
+                        {
+                          '--score-flight-x': `${scoreFlight.x}px`,
+                          '--score-flight-y': `${scoreFlight.y}px`,
+                        } as CSSProperties
+                      }
                     >
                       {activeRevealResult.scoreDelta >= 0 ? '+' : ''}
                       {activeRevealResult.scoreDelta.toLocaleString()}
@@ -850,7 +1584,9 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                     ? 'ACCOUNT DAMAGED'
                     : activeRevealPlayerId
                       ? 'VERDICT PENDING'
-                      : snapshot.reveal.correctAnswerText}
+                      : activeReactionKey
+                        ? 'GROUP VERDICT IN PROGRESS'
+                        : snapshot.reveal.correctAnswerText}
               </div>
             </div>
             <Scoreboard
@@ -858,6 +1594,7 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
               compact
               scoreOverrides={revealScoreOverrides}
               changedPlayerIds={settledRevealPlayers}
+              stableTieOrder={snapshot.reveal.playerResults.map((result) => result.playerId)}
             />
           </div>
         )}
@@ -885,13 +1622,15 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
         {snapshot.phase === 'lobby' ? (
           <>
             <div className="host__hint">
-              {!voice.ready
-                ? 'Start is locked until every reachable voice line is cooked and loaded.'
-                : snapshot.players.length === 0
-                  ? 'At least one contestant must enter the blast radius.'
-                  : !everyPlayerReady
-                    ? 'Waiting for every phone to press ready.'
-                    : 'Voice track and contestants locked. The show is armed.'}
+              {episodeRestarting
+                ? 'The old room is closing while the new episode takes over.'
+                : !voice.ready
+                  ? 'Start is locked until every reachable voice line is cooked and loaded.'
+                  : snapshot.players.length === 0
+                    ? 'At least one contestant must enter the blast radius.'
+                    : !everyPlayerReady
+                      ? 'Waiting for every phone to press ready.'
+                      : 'Voice track and contestants locked. The show is armed.'}
             </div>
             <button
               className="button button--host"
@@ -899,7 +1638,11 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
               onClick={startShow}
             >
               {busy ? <CircleNotch className="spinner" /> : <Play weight="fill" />}
-              {voice.ready ? 'START THE SHOW' : 'COOKING AUDIO…'}
+              {episodeRestarting
+                ? 'SWITCHING EPISODE…'
+                : voice.ready
+                  ? 'START THE SHOW'
+                  : 'COOKING AUDIO…'}
             </button>
           </>
         ) : snapshot.phase === 'complete' ? (
@@ -927,6 +1670,16 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
           </>
         )}
       </footer>
+
+      <EpisodeAuthorKitModal
+        open={authorKitOpen}
+        busy={authorKitBusy}
+        notice={authorKitNotice}
+        error={authorKitError}
+        desktopAvailable={Boolean(window.youreAllWrongDesktop)}
+        onClose={() => setAuthorKitOpen(false)}
+        onDownload={() => void downloadAuthorKit()}
+      />
 
       {error && (
         <button className="toast-error" onClick={() => setError(null)}>

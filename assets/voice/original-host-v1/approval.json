@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "status": "approved",
+  "engine": "qwen3-tts",
+  "syntheticOriginal": true,
+  "voiceId": "original-host-v1",
+  "voiceName": "The Host",
+  "approvedAt": "2026-07-26T03:10:16.9160098+00:00",
+  "approvedAsRendered": true,
+  "reference": {
+    "file": "reference.wav",
+    "sha256": "1cd786f2cf9c15bf66e116ca46dd391d58a3d812843f290229aebbec6014efdd",
+    "transcript": "Welcome to You're All Wrong. Tonight, four innocent buttons are about to become evidence. Read carefully, answer quickly, and remember: confidence is just a mistake wearing a nicer jacket."
+  },
+  "audition": {
+    "candidateId": "qwen-host-02",
+    "seed": 1730324455,
+    "transcriptWordErrorRate": 0,
+    "onsetMilliseconds": 233
+  }
+}

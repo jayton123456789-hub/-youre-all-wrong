@@ -15,6 +15,7 @@ const INITIAL_PROGRESS: VoiceLoadProgress = {
   cached: 0,
   voiceName: 'Local host',
   message: 'Connecting to the episode kitchen…',
+  activity: null,
 };
 
 export interface EpisodeVoiceState {

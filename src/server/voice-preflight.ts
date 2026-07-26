@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
@@ -9,13 +9,15 @@ import type {
   VoiceAssetManifest,
   VoiceAssetManifestEntry,
   VoiceEngineId,
+  VoicePreflightActivity,
   VoicePreflightStatus,
 } from '../domain/voice/preflight.js';
 import { buildVoiceRenderPlan, type PlannedLine } from '../domain/voice/render-plan.js';
 import type { Showpack } from '../domain/showpack/schema.js';
 
-interface VoiceWorkerJob {
+export interface VoiceWorkerJob {
   cueId: string;
+  cacheKey: string;
   outputPath: string;
   text: string;
   delivery: PlannedLine['delivery'];
@@ -24,17 +26,24 @@ interface VoiceWorkerJob {
   pronunciation: Record<string, string>;
 }
 
-interface VoiceWorkerManifest {
+export interface VoiceWorkerManifest {
   protocolVersion: 1;
   voiceName: string;
   jobs: VoiceWorkerJob[];
 }
 
-interface WorkerProgress {
+export interface WorkerCueProgress {
   type: 'progress';
   cueId: string;
   cached: boolean;
 }
+
+export interface WorkerActivity {
+  type: 'activity';
+  activity: VoicePreflightActivity;
+}
+
+export type WorkerProgress = WorkerCueProgress | WorkerActivity;
 
 export interface VoiceRendererConfig {
   engineId: VoiceEngineId;
@@ -78,6 +87,40 @@ export interface VoicePreflightService {
   prepare(): Promise<void>;
 }
 
+export class UnavailableVoicePreflight implements VoicePreflightService {
+  readonly #status: VoicePreflightStatus;
+
+  constructor(message: string) {
+    this.#status = {
+      state: 'error',
+      completed: 0,
+      total: 0,
+      rendered: 0,
+      cached: 0,
+      voiceName: 'Neural host unavailable',
+      message,
+      activity: null,
+    };
+  }
+
+  get status(): VoicePreflightStatus {
+    return publicStatus(this.#status);
+  }
+
+  get manifest(): null {
+    return null;
+  }
+
+  fileForCue(_cueId: string): null {
+    return null;
+  }
+
+  async prepare(): Promise<void> {
+    // The runtime and lobby remain available so the setup problem can be shown
+    // in context. The server's Start gate remains locked while this state is error.
+  }
+}
+
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -86,18 +129,110 @@ function publicStatus(status: VoicePreflightStatus): VoicePreflightStatus {
   return structuredClone(status);
 }
 
+function roughLineCount(count: number): string {
+  return `${count} rough ${count === 1 ? 'line' : 'lines'}`;
+}
+
+export function voiceActivityMessage(activity: VoicePreflightActivity): string {
+  switch (activity.type) {
+    case 'quality-retry':
+      return `Re-recording one rough line · quality pass ${activity.attempt}/${activity.maximumAttempts}`;
+    case 'quality-deferred':
+      return `${roughLineCount(activity.parkedCount)} parked · cooking the rest`;
+    case 'quality-rescue-started':
+      return `${roughLineCount(activity.parkedCount)} ready for quality rescue`;
+    case 'quality-rescue-attempt':
+      return `Rescuing 1 rough line · pass ${activity.rescueIndex}/${activity.rescueTotal}`;
+    case 'quality-rescue-recovered':
+      return 'Rough line rescued · checking the rest';
+    case 'quality-rescue-exhausted':
+      return 'One rough line resisted rescue · finishing quality checks';
+    case 'quality-rescue-complete':
+      return activity.failedCount === 0 && activity.recoveredCount > 0
+        ? 'Rough line rescued · checking the rest'
+        : 'Quality rescue finished · checking final results';
+  }
+}
+
+interface VoiceCacheReceipt {
+  schemaVersion: 1;
+  cacheKey: string;
+  waveSha256: string;
+  durationMs: number;
+}
+
+function voiceCacheReceiptPath(wavePath: string): string {
+  return `${wavePath}.json`;
+}
+
+function sha256Buffer(value: Buffer): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 async function validWaveFile(path: string): Promise<boolean> {
   try {
     const details = await stat(path);
     if (!details.isFile() || details.size < 46) return false;
-    const header = await readFile(path, { encoding: null });
+    waveDurationMs(await readFile(path));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function validVoiceCacheEntry(path: string, cacheKey: string): Promise<boolean> {
+  try {
+    const [waveDetails, receiptDetails] = await Promise.all([
+      stat(path),
+      stat(voiceCacheReceiptPath(path)),
+    ]);
+    if (
+      !waveDetails.isFile() ||
+      !receiptDetails.isFile() ||
+      waveDetails.size < 46 ||
+      receiptDetails.size < 2 ||
+      receiptDetails.size > 4_096
+    ) {
+      return false;
+    }
+    const [wave, receiptSource] = await Promise.all([
+      readFile(path),
+      readFile(voiceCacheReceiptPath(path), 'utf8'),
+    ]);
+    const durationMs = waveDurationMs(wave);
+    const receipt = JSON.parse(receiptSource) as Partial<VoiceCacheReceipt>;
     return (
-      header.length >= 12 &&
-      header.toString('ascii', 0, 4) === 'RIFF' &&
-      header.toString('ascii', 8, 12) === 'WAVE'
+      receipt.schemaVersion === 1 &&
+      receipt.cacheKey === cacheKey &&
+      receipt.waveSha256 === sha256Buffer(wave) &&
+      receipt.durationMs === durationMs
     );
   } catch {
     return false;
+  }
+}
+
+async function writeVoiceCacheReceipt(
+  wavePath: string,
+  cacheKey: string,
+  wave: Buffer,
+): Promise<void> {
+  const receiptPath = voiceCacheReceiptPath(wavePath);
+  const temporaryPath = `${receiptPath}.${randomUUID()}.tmp`;
+  const receipt: VoiceCacheReceipt = {
+    schemaVersion: 1,
+    cacheKey,
+    waveSha256: sha256Buffer(wave),
+    durationMs: waveDurationMs(wave),
+  };
+  try {
+    await writeFile(temporaryPath, `${JSON.stringify(receipt)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+    await rename(temporaryPath, receiptPath);
+  } finally {
+    await unlink(temporaryPath).catch(() => undefined);
   }
 }
 
@@ -110,26 +245,118 @@ export function waveDurationMs(buffer: Buffer): number {
     throw new Error('Voice cache entry is not a RIFF/WAVE file.');
   }
 
-  let byteRate = 0;
-  let dataBytes = 0;
+  const riffEnd = buffer.readUInt32LE(4) + 8;
+  if (riffEnd < 12) {
+    throw new Error('Voice cache entry has an invalid RIFF container size.');
+  }
+  if (riffEnd > buffer.length) {
+    throw new Error('Voice cache entry has a truncated RIFF container.');
+  }
+  if (riffEnd !== buffer.length) {
+    throw new Error('Voice cache entry has bytes outside its RIFF container.');
+  }
+
+  let sampleRate: number | null = null;
+  let blockAlign: number | null = null;
+  let dataBytes: number | null = null;
   let offset = 12;
-  while (offset + 8 <= buffer.length) {
+  while (offset < riffEnd) {
+    if (offset + 8 > riffEnd) {
+      throw new Error('Voice cache entry has a truncated chunk header.');
+    }
     const chunkId = buffer.toString('ascii', offset, offset + 4);
     const chunkSize = buffer.readUInt32LE(offset + 4);
     const contentOffset = offset + 8;
-    if (chunkId === 'fmt ' && chunkSize >= 12 && contentOffset + 12 <= buffer.length) {
-      byteRate = buffer.readUInt32LE(contentOffset + 8);
+    const contentEnd = contentOffset + chunkSize;
+    if (contentEnd > riffEnd) {
+      throw new Error(`Voice cache entry has a truncated "${chunkId}" chunk.`);
+    }
+    const paddedEnd = contentEnd + (chunkSize % 2);
+    if (paddedEnd > riffEnd) {
+      throw new Error(`Voice cache entry is missing padding after its "${chunkId}" chunk.`);
+    }
+
+    if (chunkId === 'fmt ') {
+      if (sampleRate !== null) {
+        throw new Error('Voice cache entry contains duplicate PCM format chunks.');
+      }
+      if (chunkSize !== 16 && chunkSize !== 18) {
+        throw new Error('Voice cache entry must use a 16-byte or 18-byte PCM format chunk.');
+      }
+
+      const encoding = buffer.readUInt16LE(contentOffset);
+      const channels = buffer.readUInt16LE(contentOffset + 2);
+      const parsedSampleRate = buffer.readUInt32LE(contentOffset + 4);
+      const byteRate = buffer.readUInt32LE(contentOffset + 8);
+      const parsedBlockAlign = buffer.readUInt16LE(contentOffset + 12);
+      const bitsPerSample = buffer.readUInt16LE(contentOffset + 14);
+
+      if (encoding !== 1 && encoding !== 3) {
+        throw new Error(`Voice cache entry uses unsupported WAVE encoding ${encoding}.`);
+      }
+      if (channels < 1 || channels > 2) {
+        throw new Error(`Voice cache entry uses unsupported channel count ${channels}.`);
+      }
+      if (parsedSampleRate < 8_000 || parsedSampleRate > 192_000) {
+        throw new Error(`Voice cache entry uses unsupported sample rate ${parsedSampleRate}.`);
+      }
+
+      const supportedBits =
+        encoding === 1
+          ? bitsPerSample === 8 ||
+            bitsPerSample === 16 ||
+            bitsPerSample === 24 ||
+            bitsPerSample === 32
+          : bitsPerSample === 32 || bitsPerSample === 64;
+      if (!supportedBits) {
+        throw new Error(
+          `Voice cache entry uses unsupported ${bitsPerSample}-bit encoding ${encoding}.`,
+        );
+      }
+
+      const expectedBlockAlign = channels * (bitsPerSample / 8);
+      if (parsedBlockAlign !== expectedBlockAlign) {
+        throw new Error(
+          `Voice cache entry has block alignment ${parsedBlockAlign}; expected ${expectedBlockAlign}.`,
+        );
+      }
+      const expectedByteRate = parsedSampleRate * expectedBlockAlign;
+      if (byteRate !== expectedByteRate) {
+        throw new Error(
+          `Voice cache entry has byte rate ${byteRate}; expected ${expectedByteRate}.`,
+        );
+      }
+      if (chunkSize === 18 && buffer.readUInt16LE(contentOffset + 16) !== 0) {
+        throw new Error('Voice cache entry has an unsupported PCM format extension.');
+      }
+
+      sampleRate = parsedSampleRate;
+      blockAlign = parsedBlockAlign;
     } else if (chunkId === 'data') {
+      if (sampleRate === null || blockAlign === null) {
+        throw new Error('Voice cache entry places audio data before its PCM format chunk.');
+      }
+      if (dataBytes !== null) {
+        throw new Error('Voice cache entry contains duplicate audio data chunks.');
+      }
+      if (chunkSize === 0) {
+        throw new Error('Voice cache entry contains an empty audio data chunk.');
+      }
+      if (chunkSize % blockAlign !== 0) {
+        throw new Error(
+          `Voice cache entry audio data is not aligned to ${blockAlign}-byte sample frames.`,
+        );
+      }
       dataBytes = chunkSize;
     }
-    if (byteRate > 0 && dataBytes > 0) break;
-    offset = contentOffset + chunkSize + (chunkSize % 2);
+    offset = paddedEnd;
   }
 
-  if (byteRate <= 0 || dataBytes <= 0) {
+  if (sampleRate === null || blockAlign === null || dataBytes === null) {
     throw new Error('Voice cache entry is missing its PCM format or data chunk.');
   }
-  return Math.max(1, Math.round((dataBytes / byteRate) * 1_000));
+  const sampleFrames = dataBytes / blockAlign;
+  return Math.max(1, Math.round((sampleFrames / sampleRate) * 1_000));
 }
 
 export async function runPowerShellVoiceWorker(
@@ -166,7 +393,7 @@ export async function runPowerShellVoiceWorker(
     const output = createInterface({ input: child.stdout });
     output.on('line', (line) => {
       try {
-        const parsed = JSON.parse(line) as Partial<WorkerProgress>;
+        const parsed = JSON.parse(line) as Partial<WorkerCueProgress>;
         if (
           parsed.type === 'progress' &&
           typeof parsed.cueId === 'string' &&
@@ -232,6 +459,7 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
       cached: 0,
       voiceName: this.#renderer.voiceName,
       message: 'Preparing the host voice…',
+      activity: null,
     };
   }
 
@@ -264,20 +492,40 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
 
   async #prepareOnce(): Promise<void> {
     try {
-      if (!existsSync(this.#workerPath)) {
-        throw new Error(`The local voice worker is missing: ${this.#workerPath}`);
-      }
       await mkdir(this.#cacheDirectory, { recursive: true });
       const jobs: VoiceWorkerJob[] = [];
+      const pendingCueCountByJobCueId = new Map<string, number>();
+      const scheduledJobCueIdByOutputPath = new Map<string, string>();
       let cachedCount = 0;
       for (const line of this.#plan) {
         const outputPath = join(this.#cacheDirectory, `${line.cacheKey}.wav`);
         this.#filesByCueId.set(line.cueId, outputPath);
-        if (await validWaveFile(outputPath)) {
-          cachedCount += 1;
+        const scheduledJobCueId = scheduledJobCueIdByOutputPath.get(outputPath);
+        if (scheduledJobCueId) {
+          pendingCueCountByJobCueId.set(
+            scheduledJobCueId,
+            (pendingCueCountByJobCueId.get(scheduledJobCueId) ?? 1) + 1,
+          );
+          continue;
         }
+        if (await validVoiceCacheEntry(outputPath, line.cacheKey)) {
+          cachedCount += 1;
+          continue;
+        }
+        await Promise.all(
+          [outputPath, voiceCacheReceiptPath(outputPath)].map((path) =>
+            unlink(path).catch((error: NodeJS.ErrnoException) => {
+              if (error.code !== 'ENOENT') {
+                throw new Error(`Could not clear invalid voice cache entry "${path}".`, {
+                  cause: error,
+                });
+              }
+            }),
+          ),
+        );
         jobs.push({
           cueId: line.cueId,
+          cacheKey: line.cacheKey,
           outputPath,
           text: line.text,
           delivery: line.delivery,
@@ -285,53 +533,80 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
           energyPermille: line.energyPermille,
           pronunciation: line.pronunciation,
         });
+        scheduledJobCueIdByOutputPath.set(outputPath, line.cueId);
+        pendingCueCountByJobCueId.set(line.cueId, 1);
       }
 
       this.#publish({
-        completed: 0,
+        completed: cachedCount,
         cached: cachedCount,
         rendered: 0,
+        activity: null,
         message:
           cachedCount === this.#plan.length
             ? 'Checking the finished voice cache…'
             : `Cooking ${this.#plan.length - cachedCount} host lines locally…`,
       });
 
-      const workerManifest: VoiceWorkerManifest = {
-        protocolVersion: 1,
-        voiceName: this.#renderer.voiceName,
-        jobs,
-      };
-      const manifestPath = join(this.#cacheDirectory, `render-${randomUUID()}.json`);
-      await writeFile(manifestPath, JSON.stringify(workerManifest), 'utf8');
-      try {
-        let completed = 0;
-        let rendered = 0;
-        let cached = 0;
-        await this.#runWorker(this.#workerPath, manifestPath, (progress) => {
-          completed += 1;
-          if (progress.cached) cached += 1;
-          else rendered += 1;
-          this.#publish({
-            completed,
-            rendered,
-            cached,
-            message: `Voicing the episode… ${completed} / ${this.#plan.length}`,
+      if (jobs.length > 0) {
+        if (!existsSync(this.#workerPath)) {
+          throw new Error(`The local voice worker is missing: ${this.#workerPath}`);
+        }
+        const workerManifest: VoiceWorkerManifest = {
+          protocolVersion: 1,
+          voiceName: this.#renderer.voiceName,
+          jobs,
+        };
+        const manifestPath = join(this.#cacheDirectory, `render-${randomUUID()}.json`);
+        await writeFile(manifestPath, JSON.stringify(workerManifest), 'utf8');
+        try {
+          let completed = cachedCount;
+          let rendered = 0;
+          let cached = cachedCount;
+          await this.#runWorker(this.#workerPath, manifestPath, (progress) => {
+            if (progress.type === 'activity') {
+              this.#publish({
+                activity: progress.activity,
+                message: voiceActivityMessage(progress.activity),
+              });
+              return;
+            }
+            const representedCueCount = pendingCueCountByJobCueId.get(progress.cueId) ?? 1;
+            completed += representedCueCount;
+            if (progress.cached) cached += representedCueCount;
+            else rendered += representedCueCount;
+            this.#publish({
+              completed,
+              rendered,
+              cached,
+              activity: null,
+              message: `Voicing the episode… ${completed} / ${this.#plan.length}`,
+            });
           });
-        });
-      } finally {
-        await unlink(manifestPath).catch(() => undefined);
+        } finally {
+          await unlink(manifestPath).catch(() => undefined);
+        }
       }
 
       const assets: VoiceAssetManifestEntry[] = [];
       for (const line of this.#plan) {
         const path = this.#filesByCueId.get(line.cueId);
         if (!path || !(await validWaveFile(path))) {
+          if (path) {
+            await Promise.all([
+              unlink(path).catch(() => undefined),
+              unlink(voiceCacheReceiptPath(path)).catch(() => undefined),
+            ]);
+          }
           throw new Error(`Voice worker did not produce a valid clip for "${line.cueId}".`);
+        }
+        const wave = await readFile(path);
+        if (!(await validVoiceCacheEntry(path, line.cacheKey))) {
+          await writeVoiceCacheReceipt(path, line.cacheKey, wave);
         }
         assets.push({
           cueId: line.cueId,
-          durationMs: waveDurationMs(await readFile(path)),
+          durationMs: waveDurationMs(wave),
           pauseBeforeMs: line.pauseBeforeMs,
           pauseAfterMs: line.pauseAfterMs,
           delivery: line.delivery,
@@ -347,11 +622,13 @@ export class EpisodeVoicePreflight implements VoicePreflightService {
       this.#publish({
         state: 'ready',
         completed: this.#plan.length,
+        activity: null,
         message: `${this.#plan.length} host lines are cooked and standing by.`,
       });
     } catch (error) {
       this.#publish({
         state: 'error',
+        activity: null,
         message: error instanceof Error ? error.message : String(error),
       });
       throw error;

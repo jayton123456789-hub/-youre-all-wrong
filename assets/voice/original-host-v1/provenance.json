@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 2,
+  "status": "approved-private-alpha",
+  "identity": {
+    "voiceId": "original-host-v1",
+    "sourceType": "original-synthetic-design",
+    "recognizablePersonImitationIntended": false
+  },
+  "casting": {
+    "engine": "qwen3-tts",
+    "packageVersion": "0.1.1",
+    "model": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    "modelRevision": "5ecdb67327fd37bb2e042aab12ff7391903235d3",
+    "license": "Apache-2.0",
+    "candidateId": "qwen-host-02",
+    "seed": 1730324455,
+    "direction": "An original American male trivia presenter around forty. Warm middle register, lean resonance, precise diction without theatrical over-enunciation, and agile conversational timing. The opening is inviting but skeptical; the sentence gathers momentum, then cools into an understated punchline. Varied pitch follows the meaning instead of a repeated melody. Dry studio recording, no commercial polish and no resemblance to a named person."
+  },
+  "reference": {
+    "file": "reference.wav",
+    "transcript": "Welcome to You're All Wrong. Tonight, four innocent buttons are about to become evidence. Read carefully, answer quickly, and remember: confidence is just a mistake wearing a nicer jacket.",
+    "durationSeconds": 13.68,
+    "onsetMilliseconds": 233,
+    "wordErrorRate": 0,
+    "sha256": "1cd786f2cf9c15bf66e116ca46dd391d58a3d812843f290229aebbec6014efdd"
+  },
+  "renderer": {
+    "engine": "qwen3-tts",
+    "packageVersion": "0.1.1",
+    "model": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+    "modelRevision": "5d83992436eae1d760afd27aff78a71d676296fc",
+    "license": "Apache-2.0",
+    "postprocessing": "digital-silence-guards-only"
+  },
+  "approval": {
+    "purpose": "private playable package",
+    "ownerListeningApproved": true,
+    "approvedAt": "2026-07-26T03:10:16.9160098+00:00",
+    "approvedAsRendered": true,
+    "pitchOrTempoModificationAllowed": false,
+    "replacementInvalidatesVoiceCache": true
+  }
+}

@@ -37,7 +37,7 @@ Every multiple-choice question contains:
 
 - Stable ID and category
 - Display prompt and performed prompt cues
-- Two to six stable answer IDs
+- Exactly four stable answer IDs
 - One correct answer ID
 - A complete independent reaction for every wrong answer
 - Correct-answer reaction
@@ -70,6 +70,7 @@ Spoken lines use renderer-neutral direction:
   "id": "results-title-line",
   "speaker": "host",
   "text": "YOU'RE! ALL! WROOOONG!",
+  "spokenText": "And after all that: you're all wrong!",
   "delivery": "finale_shout",
   "pace": 0.85,
   "energy": 1,
@@ -78,6 +79,16 @@ Spoken lines use renderer-neutral direction:
   "pronunciation": {}
 }
 ```
+
+`text` is the on-screen/caption form. Optional `spokenText` is the natural
+sentence sent to the voice renderer. Use it when display typography is not good
+speech input: isolated category titles, acronyms, symbols, vocal stretching,
+or deliberately fragmented text. The cache follows `spokenText`, so changing
+only the visual title does not recook audio.
+
+For example, display `MINECRAFT: THE HEAVY UPDATE`, but speak
+`And now, Minecraft: The Heavy Update.` Proper names are more reliable inside
+a natural sentence than as an isolated all-caps title.
 
 Comedy timing is explicit. It does not depend on punctuation surviving a TTS
 model's text normalization.

@@ -54,6 +54,7 @@ describe('voice preflight HTTP API', () => {
         cached: 0,
         voiceName: 'Test Host',
         message: 'One line ready.',
+        activity: null,
       },
       manifest: {
         protocolVersion: 1,

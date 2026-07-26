@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "installerRevision": "yaw-chatterbox-runtime-v1",
+  "python": {
+    "major": 3,
+    "minor": 11
+  },
+  "packages": {
+    "chatterboxTts": "0.1.7",
+    "torch": "2.6.0",
+    "torchaudio": "2.6.0"
+  },
+  "models": {
+    "turbo": {
+      "repository": "ResembleAI/chatterbox-turbo",
+      "revision": "749d1c1a46eb10492095d68fbcf55691ccf137cd",
+      "requiredFiles": [
+        "added_tokens.json",
+        "conds.pt",
+        "merges.txt",
+        "s3gen.safetensors",
+        "s3gen_meanflow.safetensors",
+        "special_tokens_map.json",
+        "t3_turbo_v1.safetensors",
+        "tokenizer_config.json",
+        "ve.safetensors",
+        "vocab.json"
+      ]
+    },
+    "original": {
+      "repository": "ResembleAI/chatterbox",
+      "revision": "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18",
+      "requiredFiles": [
+        "conds.pt",
+        "s3gen.safetensors",
+        "t3_cfg.safetensors",
+        "tokenizer.json",
+        "ve.safetensors"
+      ]
+    }
+  },
+  "perthRevision": "ce86c49d029f42272c1902eccb675556b9ed2330"
+}

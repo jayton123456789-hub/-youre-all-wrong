@@ -1,4 +1,4 @@
-import { playerGroupCalloutCue } from './player-callouts.js';
+import { playerCalloutCue } from './player-callouts.js';
 import type { CueSequence, Question, Showpack } from '../showpack/schema.js';
 import type {
   GameSnapshot,
@@ -12,23 +12,30 @@ function lineText(cues: CueSequence): string[] {
   return cues.filter((cue) => cue.type === 'line').map((cue) => cue.text);
 }
 
-function rankedPlayers(state: GameState): PublicPlayer[] {
+function rankedPlayers(
+  state: GameState,
+  concealedScoreDeltas?: ReadonlyMap<string, number>,
+): PublicPlayer[] {
+  const projectedScore = (playerId: string, score: number): number =>
+    score - (concealedScoreDeltas?.get(playerId) ?? 0);
   const sorted = Object.values(state.players).sort(
-    (a, b) => b.score - a.score || a.joinOrder - b.joinOrder,
+    (a, b) =>
+      projectedScore(b.id, b.score) - projectedScore(a.id, a.score) || a.joinOrder - b.joinOrder,
   );
   let previousScore: number | null = null;
   let previousRank = 0;
 
   return sorted.map((player, index) => {
-    const rank = previousScore === player.score ? previousRank : index + 1;
-    previousScore = player.score;
+    const score = projectedScore(player.id, player.score);
+    const rank = previousScore === score ? previousRank : index + 1;
+    previousScore = score;
     previousRank = rank;
     return {
       id: player.id,
       name: player.name,
       connected: player.connected,
       ready: player.ready,
-      score: player.score,
+      score,
       rank,
     };
   });
@@ -155,37 +162,73 @@ function playerPartsForGroup(
   state: GameState,
   results: PlayerQuestionResult[],
   reaction: CueSequence,
+  reactionId: string,
 ): HostPresentation['parts'] {
-  const [first, ...remaining] = results;
-  if (!first) return [];
+  if (results.length === 0) return [];
 
-  const playerNumbers = results.map((result) => {
+  const numberedResults = results.map((result) => {
     const player = state.players[result.playerId];
     if (!player) throw new Error(`Reveal referenced missing player "${result.playerId}".`);
-    return player.joinOrder + 1;
+    return { result, number: player.joinOrder + 1 };
   });
+
+  if (numberedResults.length === 1) {
+    const only = numberedResults[0]!;
+    return [
+      {
+        id: `player-${only.result.playerId}`,
+        cues: [playerCalloutCue(only.number), ...reaction],
+      },
+    ];
+  }
 
   return [
     {
-      id: `player-${first.playerId}`,
-      cues: [playerGroupCalloutCue(playerNumbers), ...reaction],
+      id: `reaction-${reactionId}`,
+      cues: reaction,
     },
-    ...remaining.map((result) => ({ id: `player-${result.playerId}`, cues: [] })),
+    ...numberedResults.map(({ result, number }) => ({
+      id: `player-${result.playerId}`,
+      cues: [playerCalloutCue(number)],
+    })),
   ];
 }
 
-function revealPresentationParts(state: GameState, question: Question): HostPresentation['parts'] {
+function revealPresentationParts(
+  state: GameState,
+  pack: Showpack,
+  question: Question,
+): HostPresentation['parts'] {
   if (!state.reveal) return [];
 
   const groups = groupRevealResults(state, question, state.reveal.playerResults);
   const selectedConditional = question.conditionalReactions.find((reaction) =>
     state.reveal?.reactionIds.includes(reaction.id),
   );
+  const allCorrectConditional =
+    selectedConditional?.when.kind === 'all_correct' ? selectedConditional : undefined;
   const parts: HostPresentation['parts'] = [];
 
-  if (selectedConditional) {
+  if (allCorrectConditional) {
+    const correctGroup = groups.find((group) => group.answerId === question.correctAnswerId);
+    if (correctGroup) {
+      parts.push(
+        ...playerPartsForGroup(
+          state,
+          correctGroup.results,
+          question.correctReaction,
+          question.correctAnswerId,
+        ),
+      );
+    }
+  } else if (selectedConditional) {
     parts.push(
-      ...playerPartsForGroup(state, state.reveal.playerResults, selectedConditional.cues),
+      ...playerPartsForGroup(
+        state,
+        state.reveal.playerResults,
+        selectedConditional.cues,
+        `conditional-${selectedConditional.id}`,
+      ),
       { id: 'correct-answer', cues: question.correctReaction },
     );
   } else {
@@ -196,11 +239,20 @@ function revealPresentationParts(state: GameState, question: Question): HostPres
         group.answerId === null
           ? question.noAnswerReaction
           : (question.wrongAnswerReactions[group.answerId] ?? question.noAnswerReaction);
-      parts.push(...playerPartsForGroup(state, group.results, reaction));
+      parts.push(
+        ...playerPartsForGroup(state, group.results, reaction, group.answerId ?? 'no-answer'),
+      );
     }
 
     if (correctGroup) {
-      parts.push(...playerPartsForGroup(state, correctGroup.results, question.correctReaction));
+      parts.push(
+        ...playerPartsForGroup(
+          state,
+          correctGroup.results,
+          question.correctReaction,
+          question.correctAnswerId,
+        ),
+      );
     } else {
       parts.push({ id: 'correct-answer', cues: question.correctReaction });
     }
@@ -208,8 +260,27 @@ function revealPresentationParts(state: GameState, question: Question): HostPres
 
   parts.push({
     id: 'explanation',
-    cues: [...question.explanation, ...question.postQuestion],
+    cues: question.explanation,
   });
+  if (allCorrectConditional) {
+    parts.push({
+      id: `reaction-conditional-${allCorrectConditional.id}`,
+      cues: allCorrectConditional.cues,
+    });
+  }
+  if (question.postQuestion.length > 0) {
+    parts.push({ id: 'post-question', cues: question.postQuestion });
+  }
+  const pointer = state.currentQuestion;
+  const round = pointer ? pack.episode.rounds[pointer.roundIndex] : undefined;
+  if (
+    pointer &&
+    round &&
+    round.outro.length > 0 &&
+    pointer.questionIndex === round.questions.length - 1
+  ) {
+    parts.push({ id: `round-${round.id}-outro`, cues: round.outro });
+  }
   return parts;
 }
 
@@ -232,11 +303,25 @@ function hostPresentation(
 
   if (state.phase === 'question' && state.currentQuestion && question) {
     if (state.currentQuestion.timingPhase === 'prompt') {
+      const round = pack.episode.rounds[state.currentQuestion.roundIndex];
+      const laterRoundIntro =
+        state.currentQuestion.questionIndex === 0 && state.currentQuestion.roundIndex > 0
+          ? [
+              {
+                id: `round-${round?.id ?? state.currentQuestion.roundIndex}-intro`,
+                cues: round?.intro ?? [],
+              },
+            ]
+          : [];
       return presentation(
         'question',
         'prompt',
         `${state.sessionId}:question:${question.id}:prompt`,
         [
+          ...laterRoundIntro,
+          ...(question.questionLeadIn.length > 0
+            ? [{ id: 'question-number', cues: question.questionLeadIn }]
+            : []),
           { id: 'category', cues: question.categoryIntro },
           { id: 'prompt', cues: question.prompt },
         ],
@@ -263,7 +348,7 @@ function hostPresentation(
       'reveal',
       'reveal',
       `${state.sessionId}:reveal:${state.reveal.questionId}:${state.reveal.revealedAt}`,
-      revealPresentationParts(state, question),
+      revealPresentationParts(state, pack, question),
     );
   }
 
@@ -289,8 +374,17 @@ export function projectGame(
       ? (() => {
           const compatibilityOpenedAt = pointer.answerWindowOpenedAt ?? pointer.openedAt;
           const compatibilityDeadlineAt = pointer.deadlineAt ?? compatibilityOpenedAt;
+          const priorQuestionCount = pack.episode.rounds
+            .slice(0, pointer.roundIndex)
+            .reduce((total, round) => total + round.questions.length, 0);
+          const totalQuestionCount = pack.episode.rounds.reduce(
+            (total, round) => total + round.questions.length,
+            0,
+          );
           return {
             id: question.id,
+            number: priorQuestionCount + pointer.questionIndex + 1,
+            total: totalQuestionCount,
             category: question.category,
             promptText: question.promptText,
             answers:
@@ -317,11 +411,19 @@ export function projectGame(
         })()
       : null;
 
-  const standings = rankedPlayers(state);
+  const concealedRevealScoreDeltas =
+    playerId !== null && state.phase === 'reveal' && state.reveal
+      ? new Map(
+          state.reveal.playerResults.map((result) => [result.playerId, result.scoreDelta] as const),
+        )
+      : undefined;
+  const standings = rankedPlayers(state, concealedRevealScoreDeltas);
   const revealProjection =
     state.phase === 'reveal' && state.reveal
       ? {
           questionId: state.reveal.questionId,
+          category: question?.category ?? '',
+          promptText: question?.promptText ?? '',
           correctAnswerId: state.reveal.correctAnswerId,
           correctAnswerText:
             question?.answers.find((answer) => answer.id === state.reveal?.correctAnswerId)?.text ??

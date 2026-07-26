@@ -23,6 +23,7 @@
     "build": "npm run build:web && npm run build:server && npm run build:desktop",
     "check": "npm run format:check && npm run typecheck && npm run test && npm run build",
     "package:win": "npm run check && tsx scripts/package-win.ts",
+    "voice:smoke": "tsx scripts/smoke-qwen-host.ts",
     "start": "node dist/server/standalone.js",
     "pack:demo": "tsx scripts/build-demo-showpack.ts"
   },

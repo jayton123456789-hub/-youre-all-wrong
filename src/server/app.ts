@@ -1,6 +1,6 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
-import { resolve } from 'node:path';
+import { basename, extname, join, resolve } from 'node:path';
 
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -27,6 +27,7 @@ import {
 import type { Showpack } from '../domain/showpack/schema.js';
 import { SqliteEventStore } from './event-store.js';
 import { SessionRuntime } from './session-runtime.js';
+import type { RuntimeShowpackAsset, ShowpackAssetLibrary } from './showpack-assets.js';
 import type { VoicePreflightService } from './voice-preflight.js';
 
 const PROTOCOL_VERSION = 1;
@@ -61,6 +62,8 @@ export interface GameServerOptions {
   databasePath?: string;
   logger?: boolean;
   voice?: VoicePreflightService;
+  showpackAssets?: ShowpackAssetLibrary;
+  privateMusicDirectory?: string;
 }
 
 export interface StartedGameServer {
@@ -124,6 +127,30 @@ function badRequest(error: unknown): Extract<ProtocolAck, { ok: false }> {
     message,
     retryable: true,
   };
+}
+
+function showpackAssetContentType(asset: RuntimeShowpackAsset): string {
+  const extension = extname(asset.filePath).toLocaleLowerCase('en-US');
+  const known: Record<string, string> = {
+    '.aac': 'audio/aac',
+    '.flac': 'audio/flac',
+    '.gif': 'image/gif',
+    '.jpeg': 'image/jpeg',
+    '.jpg': 'image/jpeg',
+    '.mp3': 'audio/mpeg',
+    '.mp4': asset.kind === 'audio' ? 'audio/mp4' : 'video/mp4',
+    '.ogg': asset.kind === 'video' ? 'video/ogg' : 'audio/ogg',
+    '.otf': 'font/otf',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.ttf': 'font/ttf',
+    '.wav': 'audio/wav',
+    '.webm': asset.kind === 'audio' ? 'audio/webm' : 'video/webm',
+    '.webp': 'image/webp',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+  };
+  return known[extension] ?? 'application/octet-stream';
 }
 
 function requireAck<T>(acknowledge: unknown): AckCallback<T> | null {
@@ -205,6 +232,43 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     revision: runtime.state.revision,
   }));
 
+  app.get('/api/private-music', async (request, reply) => {
+    const suppliedKey = request.headers['x-yaw-host-key'];
+    const key = Array.isArray(suppliedKey) ? (suppliedKey[0] ?? '') : (suppliedKey ?? '');
+    if (!runtime.verifyHostSecret(key)) {
+      return reply.code(403).send({ message: 'Host authorization required.' });
+    }
+    const directory = options.privateMusicDirectory;
+    if (!directory || !existsSync(directory)) return { tracks: [] };
+    return {
+      tracks: readdirSync(directory)
+        .filter((name) => extname(name).toLowerCase() === '.mp3')
+        .sort()
+        .map((name) => ({
+          name,
+          url: `/api/private-music/${encodeURIComponent(name)}`,
+        })),
+    };
+  });
+
+  app.get<{ Params: { name: string } }>('/api/private-music/:name', async (request, reply) => {
+    const suppliedKey = request.headers['x-yaw-host-key'];
+    const key = Array.isArray(suppliedKey) ? (suppliedKey[0] ?? '') : (suppliedKey ?? '');
+    if (!runtime.verifyHostSecret(key)) {
+      return reply.code(403).send({ message: 'Host authorization required.' });
+    }
+    const directory = options.privateMusicDirectory;
+    const name = basename(decodeURIComponent(request.params.name));
+    if (!directory || extname(name).toLowerCase() !== '.mp3') {
+      return reply.code(404).send({ message: 'Track not found.' });
+    }
+    const path = join(directory, name);
+    if (!existsSync(path)) return reply.code(404).send({ message: 'Track not found.' });
+    reply.header('Cache-Control', 'private, max-age=3600');
+    reply.type('audio/mpeg');
+    return reply.send(createReadStream(path));
+  });
+
   app.get('/api/runtime', async () => ({
     protocolVersion: PROTOCOL_VERSION,
     socketPath: SOCKET_PATH,
@@ -234,6 +298,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         cached: 0,
         voiceName: 'Unavailable',
         message: 'This runtime was launched without a local voice renderer.',
+        activity: null,
       });
     }
     return options.voice.status;
@@ -266,6 +331,37 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       .type('audio/wav')
       .send(createReadStream(path));
   });
+
+  app.get('/api/showpack/assets', async (request, reply) => {
+    if (!authorizeVoiceRequest(request.headers['x-yaw-host-key'])) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    return {
+      assets: (options.showpackAssets?.assets ?? []).map((asset) => ({
+        id: asset.id,
+        kind: asset.kind,
+        bytes: asset.bytes,
+        sha256: asset.sha256,
+      })),
+    };
+  });
+
+  app.get<{ Params: { assetId: string } }>(
+    '/api/showpack/assets/:assetId',
+    async (request, reply) => {
+      if (!authorizeVoiceRequest(request.headers['x-yaw-host-key'])) {
+        return reply.code(401).send({ error: 'unauthorized' });
+      }
+      const asset = options.showpackAssets?.fileForId(request.params.assetId);
+      if (!asset || !existsSync(asset.filePath)) {
+        return reply.code(404).send({ error: 'showpack_asset_not_found' });
+      }
+      return reply
+        .header('Cache-Control', 'private, max-age=31536000, immutable')
+        .type(showpackAssetContentType(asset))
+        .send(createReadStream(asset.filePath));
+    },
+  );
 
   const resolvedWebRoot = options.webRoot ? resolve(options.webRoot) : null;
   if (resolvedWebRoot && existsSync(resolve(resolvedWebRoot, 'index.html'))) {

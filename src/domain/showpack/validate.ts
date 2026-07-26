@@ -29,7 +29,7 @@ function semanticIssues(pack: Showpack): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const globalIds = new Map<string, string>();
   const sourceIds = new Set(pack.episode.sources.map((source) => source.id));
-  const assetIds = new Set(pack.manifest.assets.map((asset) => asset.id));
+  const assetsById = new Map(pack.manifest.assets.map((asset) => [asset.id, asset]));
 
   const claimId = (id: string, path: string) => {
     const previousPath = globalIds.get(id);
@@ -77,12 +77,21 @@ function semanticIssues(pack: Showpack): ValidationIssue[] {
         });
       }
       claimId(cue.id, `${path}/id`);
-      if (cue.type === 'sound' && !assetIds.has(cue.assetId)) {
-        issues.push({
-          path: `${path}/assetId`,
-          code: 'unknown_asset',
-          message: `Sound cue references undeclared asset "${cue.assetId}".`,
-        });
+      if (cue.type === 'sound') {
+        const asset = assetsById.get(cue.assetId);
+        if (!asset) {
+          issues.push({
+            path: `${path}/assetId`,
+            code: 'unknown_asset',
+            message: `Sound cue references undeclared asset "${cue.assetId}".`,
+          });
+        } else if (asset.kind !== 'audio') {
+          issues.push({
+            path: `${path}/assetId`,
+            code: 'sound_asset_not_audio',
+            message: `Sound cue asset "${cue.assetId}" must be declared as audio.`,
+          });
+        }
       }
     });
   };

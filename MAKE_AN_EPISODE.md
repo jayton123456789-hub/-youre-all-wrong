@@ -1,5 +1,10 @@
 # MAKE AN EPISODE
 
+> The desktop lobby's **MAKE EPISODE** button is the authoritative authoring workflow.
+> It downloads a versioned ZIP containing the live schema, validated examples, voice
+> rules, checklists, and transcript-based tone study. Use that kit whenever possible;
+> this standalone document remains a readable development reference.
+
 This file is a copy-ready authoring prompt for an online AI. Attach it to a new
 chat, then describe the people, subjects, running jokes, difficulty, and content
 rating you want. The AI should return one spoiler-contained JSON source file
@@ -86,13 +91,16 @@ Markdown inside JSON strings.
    play all selected wrong branches, ordered by popularity and then authored
    answer order. Do not make separate branches contradict or depend on one
    another.
-6. `correctReaction` identifies or celebrates the correct result. It plays
-   after selected wrong material and after any matched conditional opener, so
-   do not write it as if everyone was correct.
+6. `correctReaction` begins the factual reveal. Do not write a blunt
+   "Player one, you're correct," "Correct answer," or generic congratulations.
+   Lead with the decisive fact so listeners can infer which choice won before
+   or as you naturally identify it. It plays after selected wrong material.
 7. `noAnswerReaction` is required. It must work when a player or the room runs
    out of time and must not claim that a specific answer was chosen.
-8. `explanation` should clearly explain why the answer is correct. Comedy is
-   welcome, but never instead of the fact.
+8. `explanation` completes the factual reveal and should clearly explain why
+   the answer is correct. The selected bubble remains pending while this beat
+   unfolds, then the score pays out. Comedy is welcome, but never instead of
+   the fact.
 9. `postQuestion` is optional and may be empty. Across a full episode, vary it:
    roughly one-third quick tags, one-third short scenes or monologues, and
    one-third empty or transition-only.
@@ -106,9 +114,10 @@ default branches.
 
 - At reveal, the engine selects at most one matching conditional reaction.
 - Higher `priority` wins; equal priorities break by reaction ID.
-- A selected conditional reaction replaces the normal opening wrong/correct
+- Most selected conditional reactions replace the normal opening wrong/correct
   reaction selection, after which `correctReaction`, `explanation`, and
-  `postQuestion` still play.
+  `postQuestion` still play. An `all_correct` reaction is deliberately delayed
+  until after the factual explanation so it cannot spoil the reveal.
 - Therefore each conditional must be a complete room-level reveal opener and
   must flow naturally into `correctReaction`.
 - Use no more than two conditional reactions on most questions. Reserve high
@@ -358,6 +367,7 @@ Each question has this complete shape:
 {
   "id": "q1",
   "category": "CATEGORY NAME",
+  "questionLeadIn": [],
   "categoryIntro": [],
   "prompt": [],
   "promptText": "The clean question displayed on the television and phones.",
@@ -399,8 +409,12 @@ Each question has this complete shape:
 }
 ```
 
+`questionLeadIn` is the between-question bumper. Give it a short, distinct
+question-number line or transition quip; it plays over the animated number card
+before the category appears. Do not reuse one generic line across every question.
 The arrays shown empty above must be filled when their field is required.
-`shortLabel` is optional. Answers number 2–6. `timeLimitMs` is 3000–120000.
+`shortLabel` is optional. Every standard question must contain exactly four answers.
+`timeLimitMs` is 3000–120000.
 Each scoring value is an integer from 0–1000000. Every wrong answer—and only a
 wrong answer—must appear once as a `wrongAnswerReactions` key.
 
