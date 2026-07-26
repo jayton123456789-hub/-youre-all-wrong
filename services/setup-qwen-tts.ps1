@@ -3,6 +3,9 @@ param(
   [string]$EnvironmentPath = '.yallwrong/qwen-tts-venv',
   [string]$ModelCachePath = '.yallwrong/qwen-model-cache',
   [string]$RuntimeManifestPath = '',
+  [string]$TorchWheelDirectory = '',
+  [string]$QwenWheelPath = '',
+  [string]$ResumeStagedEnvironmentPath = '',
   [ValidateSet('auto', 'cpu', 'cu128')]
   [string]$TorchBackend = 'auto',
   [switch]$IncludeCastingModel,
@@ -85,6 +88,12 @@ function Test-NvidiaGpu {
   }
 }
 
+function ConvertTo-PythonEncodedCommand {
+  param([Parameter(Mandatory = $true)][string]$Script)
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Script))
+  return "import base64;exec(base64.b64decode('$encoded'))"
+}
+
 function Assert-SafeLocalDirectory {
   param(
     [string]$Path,
@@ -119,10 +128,29 @@ if ($null -eq $python312) {
 
 $finalEnvironmentRoot = Assert-SafeLocalDirectory -Path $EnvironmentPath -Label 'EnvironmentPath'
 $modelCache = Assert-SafeLocalDirectory -Path $ModelCachePath -Label 'ModelCachePath'
+$torchWheelRoot = if ($TorchWheelDirectory.Trim()) {
+  Assert-SafeLocalDirectory -Path $TorchWheelDirectory -Label 'TorchWheelDirectory'
+} else {
+  $null
+}
+$offlineQwenWheel = if ($QwenWheelPath.Trim()) {
+  $resolvedQwenWheel = [System.IO.Path]::GetFullPath($QwenWheelPath)
+  if (-not (Test-Path -LiteralPath $resolvedQwenWheel -PathType Leaf)) {
+    throw "QwenWheelPath is not a regular file: $resolvedQwenWheel"
+  }
+  $resolvedQwenWheel
+} else {
+  $null
+}
 $environmentParent = Split-Path -Parent $finalEnvironmentRoot
 $environmentName = Split-Path -Leaf $finalEnvironmentRoot
 $installId = [Guid]::NewGuid().ToString('N')
-$environmentRoot = Join-Path $environmentParent ".$environmentName.install-$installId"
+$resumeStagedRuntime = [bool]$ResumeStagedEnvironmentPath.Trim()
+$environmentRoot = if ($resumeStagedRuntime) {
+  [System.IO.Path]::GetFullPath($ResumeStagedEnvironmentPath)
+} else {
+  Join-Path $environmentParent ".$environmentName.install-$installId"
+}
 $backupEnvironmentRoot = Join-Path $environmentParent ".$environmentName.backup-$installId"
 $installLockPath = Join-Path $environmentParent ".$environmentName.install.lock"
 $python = Join-Path $environmentRoot 'Scripts\python.exe'
@@ -136,6 +164,18 @@ if ($resolvedBackend -eq 'auto') {
 $torchIndex = [string]$contract.torchIndexes.$resolvedBackend
 if (-not $torchIndex) {
   throw "The runtime contract has no index for Torch backend $resolvedBackend."
+}
+$torchVersion = [string]$contract.packages.torch
+$torchaudioVersion = [string]$contract.packages.torchaudio
+
+if ($resumeStagedRuntime) {
+  $expectedPrefix = Join-Path $environmentParent ".$environmentName.install-"
+  if (
+    -not $environmentRoot.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+    -not (Test-Path -LiteralPath $python -PathType Leaf)
+  ) {
+    throw 'ResumeStagedEnvironmentPath is not a staged runtime created beside the final environment.'
+  }
 }
 
 New-Item -ItemType Directory -Force -Path $environmentParent, $modelCache | Out-Null
@@ -151,6 +191,9 @@ try {
 }
 
 try {
+if ($resumeStagedRuntime) {
+  Write-Host "Resuming the isolated staged Qwen environment..."
+} else {
 if (Test-Path -LiteralPath $environmentRoot) {
   throw "The unique Qwen staging path already exists: $environmentRoot"
 }
@@ -173,10 +216,19 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Failed to update pip inside the Qwen environment.'
 }
 
-$torchVersion = [string]$contract.packages.torch
-$torchaudioVersion = [string]$contract.packages.torchaudio
 Write-Host "Installing the matched PyTorch/Torchaudio $torchVersion $resolvedBackend runtime..."
-& $python -I -m pip install --upgrade --force-reinstall "torch==$torchVersion" "torchaudio==$torchaudioVersion" --index-url $torchIndex
+$torchWheel = $null
+$torchaudioWheel = $null
+if ($torchWheelRoot) {
+  $torchWheel = @(Get-ChildItem -LiteralPath $torchWheelRoot -File -Filter "torch-$torchVersion+${resolvedBackend}-*.whl")
+  $torchaudioWheel = @(Get-ChildItem -LiteralPath $torchWheelRoot -File -Filter "torchaudio-$torchaudioVersion+${resolvedBackend}-*.whl")
+  if ($torchWheel.Count -ne 1 -or $torchaudioWheel.Count -ne 1) {
+    throw "The offline Torch wheel directory must contain exactly one matched torch and torchaudio wheel."
+  }
+  & $python -I -m pip install --upgrade --force-reinstall $torchWheel[0].FullName $torchaudioWheel[0].FullName
+} else {
+  & $python -I -m pip install --upgrade --force-reinstall "torch==$torchVersion" "torchaudio==$torchaudioVersion" --index-url $torchIndex --timeout 30 --retries 2
+}
 if ($LASTEXITCODE -ne 0) {
   throw "Failed to install the matched PyTorch $resolvedBackend runtime."
 }
@@ -192,9 +244,13 @@ New-Item -ItemType Directory -Force -Path $staging | Out-Null
 try {
   $qwenVersion = [string]$contract.packages.qwenTts
   Write-Host "Downloading and hashing qwen-tts $qwenVersion..."
-  & $python -I -m pip download --only-binary=:all: --no-deps --dest $staging "qwen-tts==$qwenVersion"
-  if ($LASTEXITCODE -ne 0) {
-    throw 'Failed to download the pinned qwen-tts wheel.'
+  if ($offlineQwenWheel) {
+    Copy-Item -LiteralPath $offlineQwenWheel -Destination $staging
+  } else {
+    & $python -I -m pip download --only-binary=:all: --no-deps --dest $staging "qwen-tts==$qwenVersion" --timeout 30 --retries 2
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Failed to download the pinned qwen-tts wheel.'
+    }
   }
   $wheel = @(Get-ChildItem -LiteralPath $staging -Filter 'qwen_tts-*.whl')
   if ($wheel.Count -ne 1) {
@@ -204,13 +260,17 @@ try {
   if ($wheelHash -ne [string]$contract.packages.qwenTtsWheelSha256) {
     throw 'The qwen-tts wheel failed its pinned SHA-256 check.'
   }
-  & $python -I -m pip install $wheel[0].FullName
+  & $python -I -m pip install $wheel[0].FullName --timeout 30 --retries 2
   if ($LASTEXITCODE -ne 0) {
     throw 'Failed to install the pinned qwen-tts wheel and dependencies.'
   }
   # pip may resolve an unqualified CPU Torch dependency while installing qwen-tts.
   # Reassert the exact matched pair after dependency resolution.
-  & $python -I -m pip install --upgrade --force-reinstall --no-deps "torch==$torchVersion" "torchaudio==$torchaudioVersion" --index-url $torchIndex
+  if ($torchWheelRoot) {
+    & $python -I -m pip install --upgrade --force-reinstall --no-deps $torchWheel[0].FullName $torchaudioWheel[0].FullName
+  } else {
+    & $python -I -m pip install --upgrade --force-reinstall --no-deps "torch==$torchVersion" "torchaudio==$torchaudioVersion" --index-url $torchIndex --timeout 30 --retries 2
+  }
   if ($LASTEXITCODE -ne 0) {
     throw 'Failed to restore the matched PyTorch/Torchaudio pair.'
   }
@@ -219,12 +279,22 @@ try {
     Remove-Item -LiteralPath $staging -Recurse -Force
   }
 }
+}
+
+$env:HF_HOME = Join-Path $modelCache 'huggingface'
+$env:HUGGINGFACE_HUB_CACHE = Join-Path $env:HF_HOME 'hub'
+$env:TORCH_HOME = Join-Path $modelCache 'torch'
+$env:PYTHONNOUSERSITE = '1'
+$env:PYTHONUTF8 = '1'
+$env:HF_HUB_DISABLE_TELEMETRY = '1'
+New-Item -ItemType Directory -Force -Path $env:HF_HOME, $env:HUGGINGFACE_HUB_CACHE, $env:TORCH_HOME | Out-Null
 
 $voiceDesignPath = Join-Path $modelCache "voice-design-$($contract.models.voiceDesign.revision)"
 $basePath = Join-Path $modelCache "base-$($contract.models.base.revision)"
 $asrPath = Join-Path $modelCache "asr-$($contract.models.asr.revision)"
 
 $downloadScript = @'
+import base64
 import hashlib
 import json
 import os
@@ -243,10 +313,55 @@ if os.name == "nt":
 
 from huggingface_hub import snapshot_download
 
-repository, revision, output, file_list_json = sys.argv[1:5]
-required_files = json.loads(file_list_json)
+repository, revision, output, file_list_base64 = sys.argv[1:5]
+required_files = json.loads(base64.b64decode(file_list_base64).decode("utf-8"))
 destination = Path(output).resolve()
 destination.mkdir(parents=True, exist_ok=True)
+
+marker_path = destination / ".yaw-model.json"
+if marker_path.is_file():
+    marker = json.loads(marker_path.read_text(encoding="utf-8-sig"))
+    recorded_files = {
+        entry.get("path"): entry
+        for entry in marker.get("files", [])
+        if isinstance(entry, dict)
+    }
+    reusable = (
+        marker.get("schemaVersion") == 2
+        and marker.get("repository") == repository
+        and marker.get("revision") == revision
+    )
+    for relative_name in required_files:
+        target = destination.joinpath(*relative_name.split("/"))
+        recorded = recorded_files.get(relative_name, {})
+        if (
+            not reusable
+            or not target.is_file()
+            or target.stat().st_size != recorded.get("size")
+        ):
+            reusable = False
+            break
+        digest = hashlib.sha256()
+        with target.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != recorded.get("sha256"):
+            reusable = False
+            break
+    if reusable:
+        normalized_marker = {
+            "schemaVersion": 2,
+            "repository": repository,
+            "revision": revision,
+            "files": [recorded_files[name] for name in sorted(required_files)],
+        }
+        marker_path.write_text(
+            json.dumps(normalized_marker, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"Reusing verified model snapshot: {destination}")
+        raise SystemExit(0)
+
 snapshot_download(
     repo_id=repository,
     revision=revision,
@@ -295,6 +410,7 @@ for relative_name in required_files:
 # is completely offline after installation, so retain only the verified files.
 shutil.rmtree(destination / ".cache", ignore_errors=True)
 '@
+$downloadCommand = ConvertTo-PythonEncodedCommand -Script $downloadScript
 
 $baseFiles = @(
   'config.json',
@@ -352,7 +468,8 @@ if ($IncludeCastingModel) {
 foreach ($model in $modelInstalls) {
   Write-Host "Installing the exact $($model.Label) snapshot ($($model.Revision))..."
   $requiredFilesJson = ConvertTo-Json -Compress -InputObject @($model.RequiredFiles)
-  & $python -I -c $downloadScript $model.Repository $model.Revision $model.Path $requiredFilesJson
+  $requiredFilesBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($requiredFilesJson))
+  & $python -I -c $downloadCommand $model.Repository $model.Revision $model.Path $requiredFilesBase64
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to install the pinned $($model.Label) snapshot."
   }
@@ -414,7 +531,8 @@ print(json.dumps({
     "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
 }))
 "@
-$probeOutput = & $python -I -c $probeScript
+$probeCommand = ConvertTo-PythonEncodedCommand -Script $probeScript
+$probeOutput = & $python -I -c $probeCommand
 if ($LASTEXITCODE -ne 0) {
   throw 'The installed Qwen runtime failed its import and version probe.'
 }
@@ -486,7 +604,7 @@ try {
 
 $installedPython = Join-Path $finalEnvironmentRoot 'Scripts\python.exe'
 Write-Host 'Verifying the promoted Qwen runtime from its final path...'
-$postPromotionProbe = & $installedPython -I -c $probeScript
+$postPromotionProbe = & $installedPython -I -c $probeCommand
 if ($LASTEXITCODE -ne 0) {
   if (Test-Path -LiteralPath $finalEnvironmentRoot) {
     Move-Item -LiteralPath $finalEnvironmentRoot -Destination $environmentRoot -ErrorAction SilentlyContinue
@@ -518,7 +636,7 @@ if (-not $IncludeCastingModel) {
 }
 Write-Host 'No voice was generated or played by this setup step.'
 } finally {
-  if (Test-Path -LiteralPath $environmentRoot) {
+  if (-not $resumeStagedRuntime -and (Test-Path -LiteralPath $environmentRoot)) {
     Remove-Item -LiteralPath $environmentRoot -Recurse -Force -ErrorAction SilentlyContinue
   }
   $installLock.Dispose()
