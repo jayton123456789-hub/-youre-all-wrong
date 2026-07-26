@@ -177,6 +177,7 @@ export const QuestionSchema = z
   .object({
     id: IdSchema,
     category: z.string().trim().min(1).max(120),
+    questionLeadIn: CueSequenceSchema.default([]),
     categoryIntro: CueSequenceSchema.default([]),
     prompt: CueSequenceSchema.min(1),
     promptText: z.string().trim().min(1).max(3_000),

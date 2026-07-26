@@ -45,6 +45,7 @@ export function makeTestShowpack(): Showpack {
             {
               id: 'question-one',
               category: 'Tests With Consequences',
+              questionLeadIn: [],
               categoryIntro: [],
               prompt: [
                 {

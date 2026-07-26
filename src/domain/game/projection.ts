@@ -205,9 +205,23 @@ function revealPresentationParts(
   const selectedConditional = question.conditionalReactions.find((reaction) =>
     state.reveal?.reactionIds.includes(reaction.id),
   );
+  const allCorrectConditional =
+    selectedConditional?.when.kind === 'all_correct' ? selectedConditional : undefined;
   const parts: HostPresentation['parts'] = [];
 
-  if (selectedConditional) {
+  if (allCorrectConditional) {
+    const correctGroup = groups.find((group) => group.answerId === question.correctAnswerId);
+    if (correctGroup) {
+      parts.push(
+        ...playerPartsForGroup(
+          state,
+          correctGroup.results,
+          question.correctReaction,
+          question.correctAnswerId,
+        ),
+      );
+    }
+  } else if (selectedConditional) {
     parts.push(
       ...playerPartsForGroup(
         state,
@@ -248,6 +262,12 @@ function revealPresentationParts(
     id: 'explanation',
     cues: question.explanation,
   });
+  if (allCorrectConditional) {
+    parts.push({
+      id: `reaction-conditional-${allCorrectConditional.id}`,
+      cues: allCorrectConditional.cues,
+    });
+  }
   if (question.postQuestion.length > 0) {
     parts.push({ id: 'post-question', cues: question.postQuestion });
   }
@@ -299,6 +319,9 @@ function hostPresentation(
         `${state.sessionId}:question:${question.id}:prompt`,
         [
           ...laterRoundIntro,
+          ...(question.questionLeadIn.length > 0
+            ? [{ id: 'question-number', cues: question.questionLeadIn }]
+            : []),
           { id: 'category', cues: question.categoryIntro },
           { id: 'prompt', cues: question.prompt },
         ],
@@ -351,8 +374,17 @@ export function projectGame(
       ? (() => {
           const compatibilityOpenedAt = pointer.answerWindowOpenedAt ?? pointer.openedAt;
           const compatibilityDeadlineAt = pointer.deadlineAt ?? compatibilityOpenedAt;
+          const priorQuestionCount = pack.episode.rounds
+            .slice(0, pointer.roundIndex)
+            .reduce((total, round) => total + round.questions.length, 0);
+          const totalQuestionCount = pack.episode.rounds.reduce(
+            (total, round) => total + round.questions.length,
+            0,
+          );
           return {
             id: question.id,
+            number: priorQuestionCount + pointer.questionIndex + 1,
+            total: totalQuestionCount,
             category: question.category,
             promptText: question.promptText,
             answers:

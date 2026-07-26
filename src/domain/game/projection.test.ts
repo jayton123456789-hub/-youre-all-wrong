@@ -81,6 +81,9 @@ describe('game projections', () => {
   it('gives only the host authored intro and prompt cue sequences', () => {
     const pack = makeTestShowpack();
     pack.episode.rounds[0]!.intro = [line('round-intro-line', 'Host-only round intro.')];
+    pack.episode.rounds[0]!.questions[0]!.questionLeadIn = [
+      line('question-number-line', 'Question one. Try to look ready.'),
+    ];
     pack.episode.rounds[0]!.questions[0]!.categoryIntro = [
       line('category-intro-line', 'Host-only category intro.'),
     ];
@@ -112,12 +115,14 @@ describe('game projections', () => {
     expect(hostPrompt.presentation).toMatchObject({
       kind: 'question',
       stage: 'prompt',
-      parts: [{ id: 'category' }, { id: 'prompt' }],
+      parts: [{ id: 'question-number' }, { id: 'category' }, { id: 'prompt' }],
     });
     expect(hostPrompt.presentation?.cues.map((cue) => cue.id)).toEqual([
+      'question-number-line',
       'category-intro-line',
       'question-one-prompt',
     ]);
+    expect(hostPrompt.question).toMatchObject({ number: 1, total: 1 });
     expect(playerPrompt.presentation).toBeNull();
     expect(playerPrompt.question?.answers).toEqual([]);
     expect(playerPrompt.self?.phaseToken).toBeNull();
@@ -275,6 +280,45 @@ describe('game projections', () => {
       presentation?.cues.filter((cue) => cue.type === 'line').map((cue) => cue.id) ?? [];
     expect(spokenIds.filter((id) => id === 'question-one-wrong-b')).toHaveLength(1);
     expect(spokenIds.filter((id) => id === 'question-one-correct')).toHaveLength(1);
+  });
+
+  it('keeps an all-correct room uncertain until the factual reveal finishes', () => {
+    const pack = makeTestShowpack();
+    pack.episode.rounds[0]!.questions[0]!.conditionalReactions = [
+      {
+        id: 'all-correct-afterparty',
+        priority: 500,
+        when: { kind: 'all_correct' },
+        cues: [line('all-correct-afterparty-line', 'Fine. You may all look smug now.')],
+      },
+    ];
+    pack.episode.rounds[0]!.questions[0]!.explanation = [
+      line('question-one-explanation', 'Here is why the answer works.'),
+    ];
+
+    let state = answerBoardState(pack);
+    for (const [playerId, now] of [
+      ['p1', 5_000],
+      ['p2', 5_100],
+    ] as const) {
+      state = run(pack, state, {
+        type: 'player.answer',
+        now,
+        playerId,
+        questionId: 'question-one',
+        answerId: 'correct-a',
+        phaseToken: 'secure-phase-token',
+      });
+    }
+    state = run(pack, state, { type: 'host.reveal', now: 6_000, reason: 'host' });
+
+    expect(projectGame(state, pack).presentation?.parts.map((part) => part.id)).toEqual([
+      'reaction-correct-a',
+      'player-p1',
+      'player-p2',
+      'explanation',
+      'reaction-conditional-all-correct-afterparty',
+    ]);
   });
 
   it('projects reveal and deterministic safe finale cues to the host only', () => {

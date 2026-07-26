@@ -67,6 +67,7 @@ function collectSequences(pack: Showpack): Cue[][] {
     sequences.push(round.intro, round.outro);
     for (const question of round.questions) {
       sequences.push(
+        question.questionLeadIn,
         question.categoryIntro,
         question.prompt,
         ...question.answers.map((answer) => answer.narration),

@@ -273,6 +273,8 @@ export interface PublicPlayer {
 
 export interface PublicQuestion {
   id: string;
+  number: number;
+  total: number;
   category: string;
   promptText: string;
   answers: Array<{ id: string; text: string; shortLabel?: string }>;

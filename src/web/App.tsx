@@ -1053,7 +1053,9 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
       ? 'answers'
       : activePart === 'prompt'
         ? 'prompt'
-        : 'category';
+        : activePart === 'question-number'
+          ? 'number'
+          : 'category';
   const finaleScoresVisible =
     snapshot.phase === 'complete' ||
     (activePart !== null && activePart !== 'calm-lead-in' && activePart !== 'title-drop');
@@ -1359,6 +1361,25 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                   FIRST TAP FINAL
                 </span>
               </div>
+            </div>
+            <StageCaption cue={activeCue} speaking={directorPlaying} />
+          </div>
+        )}
+
+        {snapshot.phase === 'question' && question && questionVisual === 'number' && (
+          <div className="question-number-slate" key={`${question.id}-number`}>
+            <div className="question-number-slate__ghost" aria-hidden="true">
+              {String(question.number).padStart(2, '0')}
+            </div>
+            <div className="question-number-slate__label">NEXT LIABILITY</div>
+            <div className="question-number-slate__number">
+              <span>QUESTION</span>
+              <strong>{String(question.number).padStart(2, '0')}</strong>
+            </div>
+            <div className="question-number-slate__progress" aria-label="Question progress">
+              {Array.from({ length: question.total }, (_, index) => (
+                <i className={index < question.number ? 'is-lit' : ''} key={index} />
+              ))}
             </div>
             <StageCaption cue={activeCue} speaking={directorPlaying} />
           </div>

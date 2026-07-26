@@ -14,9 +14,25 @@ const renderer: VoiceRendererIdentity = {
 
 describe('buildVoiceRenderPlan', () => {
   it('enumerates every reachable line, endings, and reusable player callouts', () => {
-    const plan = buildVoiceRenderPlan(makeTestShowpack(), renderer);
+    const pack = makeTestShowpack();
+    pack.episode.rounds[0]!.questions[0]!.questionLeadIn = [
+      {
+        type: 'line',
+        id: 'question-one-number',
+        speaker: 'host',
+        text: 'Question one.',
+        delivery: 'announcer',
+        pace: 1,
+        energy: 0.7,
+        pauseBeforeMs: 0,
+        pauseAfterMs: 250,
+        pronunciation: {},
+      },
+    ];
+    const plan = buildVoiceRenderPlan(pack, renderer);
     const cueIds = plan.map((line) => line.cueId);
 
+    expect(cueIds).toContain('question-one-number');
     expect(cueIds).toContain('question-one-wrong-b');
     expect(cueIds).toContain('question-one-correct');
     expect(cueIds).toContain('finale-title-drop');

@@ -23,6 +23,18 @@ function line(
   };
 }
 
+const QUESTION_LEAD_INS: Record<string, string> = {
+  'shakespearean-prompt':
+    'Question one. We begin with literature, because apparently terms of service were not painful enough.',
+  'no-build-no-quartering':
+    'Question two. The Bill of Rights finally gets the couch episode it has been waiting for.',
+  'mars-ping':
+    'Question three. Please blame the following delay on celestial mechanics, not your internet provider.',
+  'darwins-feed': 'Question four. Nature would like you to stop confusing effort with inheritance.',
+  'minecraft-gold':
+    'Question five. We finish where all scholarship eventually ends: arguing about Minecraft inventory physics.',
+};
+
 function question(
   id: string,
   category: string,
@@ -47,6 +59,22 @@ function question(
   return {
     id,
     category,
+    questionLeadIn: [
+      {
+        type: 'stage',
+        id: `${id}-number-in`,
+        action: 'question_in',
+        intensity: 0.82,
+        durationMs: 700,
+      },
+      line(
+        `${id}-number-line`,
+        QUESTION_LEAD_INS[id] ?? 'Next question. Try to make this one look intentional.',
+        'smug',
+        0.68,
+        500,
+      ),
+    ],
     categoryIntro: [
       {
         type: 'stage',
@@ -98,21 +126,7 @@ function question(
     postQuestion: postLines.map((text, index) =>
       line(`${id}-post-${index + 1}`, text, index === postLines.length - 1 ? 'dry' : 'smug', 0.5),
     ),
-    conditionalReactions: [
-      {
-        id: `${id}-everybody-nailed-it`,
-        priority: 500,
-        when: { kind: 'all_correct' },
-        cues: [
-          line(
-            `${id}-everybody-nailed-it-line`,
-            'Every player got it right. I need someone to check the carbon monoxide detector; group competence this high is usually a warning sign.',
-            'mock_sincere',
-            0.63,
-          ),
-        ],
-      },
-    ],
+    conditionalReactions: [],
     timeLimitMs: 20_000,
     scoring: {
       correct: 1_000,

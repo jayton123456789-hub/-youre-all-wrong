@@ -101,16 +101,17 @@ three jokes after every fact.
 
 ## Game flow the writing must support
 
-1. Category bumper appears.
-2. Host naturally announces the category.
-3. Category clears.
-4. Full question text appears while the host reads the prompt.
-5. Answers appear when answer narration starts; the twenty-second clock begins.
-6. A player's early lock may interrupt answer narration.
-7. When everyone locks or time expires, selected answer groups are revealed.
-8. Wrong branches land before their damage animation. The correct branch begins its
+1. An animated question-number bumper appears with a short, unique transition quip.
+2. Category bumper appears.
+3. Host naturally announces the category.
+4. Category clears.
+5. Full question text appears while the host reads the prompt.
+6. Answers appear when answer narration starts; the twenty-second clock begins.
+7. A player's early lock may interrupt answer narration.
+8. When everyone locks or time expires, selected answer groups are revealed.
+9. Wrong branches land before their damage animation. The correct branch begins its
    evidence-led reveal while the selected answer remains pending.
-9. The correct explanation lands, then the bubble turns green and its score pays out.
+10. The correct explanation lands, then the bubble turns green and its score pays out.
    Optional post-question material completes the beat.
 
 Do not write narration that assumes answer choices are still hidden after they appear.
@@ -282,7 +283,7 @@ Unknown properties are rejected.
 
 ## Standard question
 
-- id/category/categoryIntro
+- id/category/questionLeadIn/categoryIntro
 - prompt cues plus promptText for television display
 - exactly four answers, each with narration
 - correctAnswerId

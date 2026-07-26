@@ -94,9 +94,7 @@ Markdown inside JSON strings.
 6. `correctReaction` begins the factual reveal. Do not write a blunt
    "Player one, you're correct," "Correct answer," or generic congratulations.
    Lead with the decisive fact so listeners can infer which choice won before
-   or as you naturally identify it. It plays after selected wrong material and
-   after any matched conditional opener, so do not write it as if everyone was
-   correct.
+   or as you naturally identify it. It plays after selected wrong material.
 7. `noAnswerReaction` is required. It must work when a player or the room runs
    out of time and must not claim that a specific answer was chosen.
 8. `explanation` completes the factual reveal and should clearly explain why
@@ -116,9 +114,10 @@ default branches.
 
 - At reveal, the engine selects at most one matching conditional reaction.
 - Higher `priority` wins; equal priorities break by reaction ID.
-- A selected conditional reaction replaces the normal opening wrong/correct
+- Most selected conditional reactions replace the normal opening wrong/correct
   reaction selection, after which `correctReaction`, `explanation`, and
-  `postQuestion` still play.
+  `postQuestion` still play. An `all_correct` reaction is deliberately delayed
+  until after the factual explanation so it cannot spoil the reveal.
 - Therefore each conditional must be a complete room-level reveal opener and
   must flow naturally into `correctReaction`.
 - Use no more than two conditional reactions on most questions. Reserve high
@@ -368,6 +367,7 @@ Each question has this complete shape:
 {
   "id": "q1",
   "category": "CATEGORY NAME",
+  "questionLeadIn": [],
   "categoryIntro": [],
   "prompt": [],
   "promptText": "The clean question displayed on the television and phones.",
@@ -409,6 +409,9 @@ Each question has this complete shape:
 }
 ```
 
+`questionLeadIn` is the between-question bumper. Give it a short, distinct
+question-number line or transition quip; it plays over the animated number card
+before the category appears. Do not reuse one generic line across every question.
 The arrays shown empty above must be filled when their field is required.
 `shortLabel` is optional. Every standard question must contain exactly four answers.
 `timeLimitMs` is 3000–120000.
