@@ -21,18 +21,19 @@ Spoken host references use stable seat labels:
 Seat number is `joinOrder + 1` and does not change when a controller disconnects
 or resumes. The host must never guess how a player-entered name is pronounced.
 
-## Pre-rendered group callouts
+## Pre-rendered seat callouts
 
-Before **Start** unlocks, the voice preflight includes every non-empty seat
-combination supported by the room. An eight-player room has 255 possible group
-callouts. Examples:
+Before **Start** unlocks, the voice preflight includes eight reusable seat callouts:
 
 - `Player two.`
-- `Players one and three.`
-- `Players one, three, and four.`
+- `Player five.`
+- `Player eight.`
 
-These clips are content-addressed and reused across episodes after the first
-render. No group label is generated during gameplay.
+These clips are content-addressed and reused across episodes after the first render.
+Groups are identified visually while the answer reaction plays once, then each matching
+player receives an individual spoken seat callout and score settlement. This preserves the
+one-by-one television reveal without pre-rendering 255 possible seat combinations. No
+player label is generated during gameplay.
 
 ## Reveal grouping
 
@@ -40,10 +41,9 @@ A reveal reaction belongs to an answer choice, not to each individual player.
 
 When several players choose the same answer:
 
-1. The host announces the numbered group once.
-2. That answer's authored reaction plays once.
-3. Each player's score result may still settle individually on screen.
-4. The same roast must not replay for every member of the group.
+1. The answer group is identified visually and its authored reaction plays once.
+2. The host calls each stable seat number as that player's score settles.
+3. The same roast does not replay for every member of the group.
 
 Default group order is:
 

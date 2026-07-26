@@ -1,4 +1,4 @@
-import { playerGroupCalloutCue } from './player-callouts.js';
+import { playerCalloutCue } from './player-callouts.js';
 import type { CueSequence, Question, Showpack } from '../showpack/schema.js';
 import type {
   GameSnapshot,
@@ -177,7 +177,7 @@ function playerPartsForGroup(
     return [
       {
         id: `player-${only.result.playerId}`,
-        cues: [playerGroupCalloutCue([only.number]), ...reaction],
+        cues: [playerCalloutCue(only.number), ...reaction],
       },
     ];
   }
@@ -185,11 +185,11 @@ function playerPartsForGroup(
   return [
     {
       id: `reaction-${reactionId}`,
-      cues: [playerGroupCalloutCue(numberedResults.map(({ number }) => number)), ...reaction],
+      cues: reaction,
     },
     ...numberedResults.map(({ result, number }) => ({
       id: `player-${result.playerId}`,
-      cues: [playerGroupCalloutCue([number])],
+      cues: [playerCalloutCue(number)],
     })),
   ];
 }

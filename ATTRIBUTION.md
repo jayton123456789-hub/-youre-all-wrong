@@ -21,14 +21,23 @@ chroma-keyed and converted into the Windows icon size set. Its prompt and
 unaltered chroma source are retained in the project history. No existing logo
 or game artwork was used as a reference.
 
-## Voice models under evaluation
+## Original host voice
 
-Model binaries are not currently distributed.
+The packaged `original-host-v1` reference is an original synthetic identity
+created from written traits. It is not a recording of, or an attempt to
+imitate, a recognizable person. Its immutable seed, prompts, model revisions,
+and file hashes are recorded beside the asset in
+`assets/voice/original-host-v1/provenance.json`.
 
-| Model      | Intended use                    | License    | Source                                                   |
-| ---------- | ------------------------------- | ---------- | -------------------------------------------------------- |
-| Chatterbox | Local episode speech rendering  | MIT        | [Resemble AI](https://github.com/resemble-ai/chatterbox) |
-| Qwen3-TTS  | Original synthetic host casting | Apache-2.0 | [QwenLM](https://github.com/QwenLM/Qwen3-TTS)            |
+Model binaries download to the creator PC during local voice setup; they are
+not committed to this repository or bundled inside the application.
+
+| Model                           | Intended use                                   | License    | Source                                                              |
+| ------------------------------- | ---------------------------------------------- | ---------- | ------------------------------------------------------------------- |
+| Qwen3-TTS 12Hz 1.7B VoiceDesign | One-time original Voice 2 casting              | Apache-2.0 | [Qwen](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign) |
+| Qwen3-TTS 12Hz 0.6B Base        | Local episode speech in the approved identity  | Apache-2.0 | [Qwen](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base)        |
+| Whisper small.en                | Offline generated-line transcript QA           | Apache-2.0 | [OpenAI](https://huggingface.co/openai/whisper-small.en)            |
+| PyTorch and Torchaudio          | Local model execution and audio tensor support | BSD-style  | [PyTorch](https://pytorch.org/)                                     |
 
 Any future visible or audible asset must record creator, source URL, license,
 modifications, and file hash before it can enter a release build.

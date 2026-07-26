@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -17,6 +20,7 @@ import type { VoicePreflightService } from './voice-preflight.js';
 type TestClient = ClientSocket<ServerToClientEvents, ClientToServerEvents>;
 
 const resources: Array<{ server: GameServer; sockets: TestClient[] }> = [];
+const temporaryDirectories: string[] = [];
 const readyVoice: VoicePreflightService = {
   status: {
     state: 'ready',
@@ -26,6 +30,7 @@ const readyVoice: VoicePreflightService = {
     cached: 1,
     voiceName: 'Test Host',
     message: 'Test voice is ready.',
+    activity: null,
   },
   manifest: null,
   fileForCue: () => null,
@@ -37,6 +42,9 @@ afterEach(async () => {
     for (const socket of resource.sockets) socket.close();
     await resource.server.stop();
   }
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
+  );
 });
 
 async function testServer(): Promise<{
@@ -94,6 +102,117 @@ describe('LAN game server', () => {
     });
 
     expect(ack).toMatchObject({ ok: false, code: 'unauthorized' });
+  });
+
+  it('keeps Start locked with the voice setup message until preflight is ready', async () => {
+    const setupMessage =
+      'No approved neural host profile is installed. Install the local voice runtime first.';
+    const unavailableVoice: VoicePreflightService = {
+      status: {
+        state: 'error',
+        completed: 0,
+        total: 0,
+        rendered: 0,
+        cached: 0,
+        voiceName: 'Neural host unavailable',
+        message: setupMessage,
+        activity: null,
+      },
+      manifest: null,
+      fileForCue: () => null,
+      prepare: async () => undefined,
+    };
+    const server = await createGameServer({
+      pack: makeTestShowpack(),
+      packHash: 'a'.repeat(64),
+      port: 0,
+      logger: false,
+      voice: unavailableVoice,
+    });
+    const started = await server.start();
+    const socket: TestClient = createClient(`http://127.0.0.1:${started.port}`, {
+      path: '/realtime',
+      transports: ['websocket'],
+      forceNew: true,
+    });
+    resources.push({ server, sockets: [socket] });
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', resolve);
+      socket.once('connect_error', reject);
+    });
+    const attached = await new Promise<ProtocolAck<AttachSuccess>>((resolve) => {
+      socket.emit(
+        'host:attach',
+        {
+          protocolVersion: 1,
+          sessionId: server.runtime.identity.sessionId,
+          hostSecret: server.runtime.identity.hostSecret,
+        },
+        resolve,
+      );
+    });
+    expect(attached.ok).toBe(true);
+
+    const start = await new Promise<ProtocolAck>((resolve) => {
+      socket.emit(
+        'host:command',
+        {
+          protocolVersion: 1,
+          commandId: randomUUID(),
+          expectedRevision: server.runtime.state.revision,
+          action: 'start',
+        },
+        resolve,
+      );
+    });
+
+    expect(start).toMatchObject({
+      ok: false,
+      code: 'command_rejected',
+      message: setupMessage,
+      retryable: true,
+      currentRevision: server.runtime.state.revision,
+    });
+    expect(server.runtime.state.phase).toBe('lobby');
+  });
+
+  it('serves persisted showpack media by declared ID only to the host', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'yaw-app-assets-'));
+    temporaryDirectories.push(directory);
+    const path = join(directory, 'sting.wav');
+    const bytes = Buffer.from('test wave bytes');
+    await writeFile(path, bytes);
+    const asset = {
+      id: 'sting',
+      kind: 'audio' as const,
+      bytes: bytes.length,
+      sha256: 'a'.repeat(64),
+      filePath: path,
+    };
+    const server = await createGameServer({
+      pack: makeTestShowpack(),
+      packHash: 'a'.repeat(64),
+      port: 0,
+      logger: false,
+      voice: readyVoice,
+      showpackAssets: {
+        root: directory,
+        assets: [asset],
+        fileForId: (id) => (id === asset.id ? asset : null),
+      },
+    });
+    const started = await server.start();
+    resources.push({ server, sockets: [] });
+    const origin = `http://127.0.0.1:${started.port}`;
+
+    expect((await fetch(`${origin}/api/showpack/assets/sting`)).status).toBe(401);
+    const response = await fetch(`${origin}/api/showpack/assets/sting`, {
+      headers: { 'x-yaw-host-key': server.runtime.identity.hostSecret },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('audio/wav');
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
   });
 
   it('runs a complete networked question without leaking its solution', async () => {

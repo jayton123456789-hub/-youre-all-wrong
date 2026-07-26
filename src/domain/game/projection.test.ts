@@ -264,10 +264,7 @@ describe('game projections', () => {
       'player-p3',
       'explanation',
     ]);
-    expect(presentation?.parts[0]?.cues.map((cue) => cue.id)).toEqual([
-      'runtime-player-callout-1-2',
-      'question-one-wrong-b',
-    ]);
+    expect(presentation?.parts[0]?.cues.map((cue) => cue.id)).toEqual(['question-one-wrong-b']);
     expect(presentation?.parts[1]?.cues.map((cue) => cue.id)).toEqual(['runtime-player-callout-1']);
     expect(presentation?.parts[2]?.cues.map((cue) => cue.id)).toEqual(['runtime-player-callout-2']);
     expect(presentation?.parts[3]?.cues.map((cue) => cue.id)).toEqual([

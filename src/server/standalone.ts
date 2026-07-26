@@ -3,7 +3,12 @@ import { resolve } from 'node:path';
 import { demoPack } from '../content/demo-pack.js';
 import { validateShowpack } from '../domain/showpack/validate.js';
 import { createGameServer } from './app.js';
-import { EpisodeVoicePreflight, type VoiceRendererConfig } from './voice-preflight.js';
+import { createQwenVoiceAdapterFromEnvironment } from './qwen-renderer.js';
+import {
+  EpisodeVoicePreflight,
+  UnavailableVoicePreflight,
+  type VoicePreflightService,
+} from './voice-preflight.js';
 
 const validated = validateShowpack(demoPack);
 if (!validated.ok) {
@@ -14,34 +19,45 @@ if (!validated.ok) {
 
 const productionWebRoot = resolve(process.cwd(), 'dist/web');
 const isProduction = process.env.NODE_ENV === 'production';
-const useChatterbox = process.env.YAW_VOICE_ENGINE?.toLowerCase() === 'chatterbox';
-const chatterboxModel = process.env.YAW_CHATTERBOX_MODEL?.toLowerCase() ?? 'turbo';
-const voiceWorkerPath = resolve(
-  process.env.YAW_VOICE_WORKER_PATH ??
-    (useChatterbox ? 'services/chatterbox-voice-worker.ps1' : 'services/system-voice-worker.ps1'),
-);
 const voiceCacheDirectory = resolve(process.env.YAW_VOICE_CACHE_PATH ?? '.yallwrong/voice-cache');
-const renderer: VoiceRendererConfig | undefined = useChatterbox
-  ? {
-      engineId: 'chatterbox-tts',
-      modelRevision: `chatterbox-${chatterboxModel}-pip-0.1.7`,
-      deliveryPresetRevision: 'yaw-chatterbox-delivery-v2',
-      pronunciationRevision: 'whole-token-substitution-v2',
-      postProcessingRevision: 'librosa-tempo-v1',
-      voiceName: process.env.YAW_CHATTERBOX_VOICE_NAME ?? 'Local Chatterbox Host',
-      voiceProfileHashSource: [
-        chatterboxModel,
-        process.env.YAW_CHATTERBOX_VOICE_ID ?? '',
-        process.env.YAW_CHATTERBOX_REFERENCE ?? '',
-      ].join(':'),
-    }
-  : undefined;
-const voice = new EpisodeVoicePreflight({
-  pack: validated.pack,
-  cacheDirectory: voiceCacheDirectory,
-  workerPath: voiceWorkerPath,
-  ...(renderer ? { renderer } : {}),
-});
+const voiceEngine = process.env.YAW_VOICE_ENGINE?.trim().toLowerCase();
+let voice: VoicePreflightService;
+let voiceDescription: string;
+
+if (voiceEngine === 'qwen3-tts' || voiceEngine === 'qwen') {
+  try {
+    const adapter = await createQwenVoiceAdapterFromEnvironment(process.env);
+    voice = new EpisodeVoicePreflight({
+      pack: validated.pack,
+      cacheDirectory: voiceCacheDirectory,
+      workerPath: adapter.workerPath,
+      renderer: adapter.renderer,
+      runWorker: adapter.runWorker,
+    });
+    voiceDescription = `${adapter.renderer.voiceName} (Qwen3-TTS Base)`;
+  } catch (error) {
+    const message = `The neural host could not be configured: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    voice = new UnavailableVoicePreflight(message);
+    voiceDescription = 'unavailable';
+  }
+} else if (voiceEngine === 'system-speech' || voiceEngine === 'sapi') {
+  voice = new EpisodeVoicePreflight({
+    pack: validated.pack,
+    cacheDirectory: voiceCacheDirectory,
+    workerPath: resolve(process.env.YAW_VOICE_WORKER_PATH ?? 'services/system-voice-worker.ps1'),
+  });
+  voiceDescription = 'Microsoft David Desktop (explicit development opt-in)';
+} else {
+  const message =
+    process.env.YAW_VOICE_UNAVAILABLE_MESSAGE?.trim() ||
+    (voiceEngine && voiceEngine !== 'unavailable'
+      ? `Unsupported local voice engine "${voiceEngine}".`
+      : 'No approved neural host is configured. Set up Qwen3-TTS before starting the show.');
+  voice = new UnavailableVoicePreflight(message);
+  voiceDescription = 'unavailable';
+}
 const server = await createGameServer({
   pack: validated.pack,
   packHash: validated.packHash,
@@ -58,8 +74,7 @@ const started = await server.start();
 
 console.log('');
 console.log("YOU'RE ALL WRONG! runtime ready");
-console.log(`Voice: ${renderer?.voiceName ?? 'Microsoft David Desktop'}`);
-if (renderer) console.log(`Neural model: ${chatterboxModel}`);
+console.log(`Voice: ${voiceDescription}`);
 console.log(`Host: ${started.hostUrl}`);
 for (const joinUrl of started.joinUrls) {
   console.log(`Phone: ${joinUrl}`);

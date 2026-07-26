@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "resources": {
+    "qwen-voice-worker.py": "6997881fc1b8a49cb11088068934e03b1279b5d9746b91f8f8d086d8b8844899",
+    "setup-qwen-tts.ps1": "2e85badcb25c6c4b6fc1c92b57014c950f5c0774e6bbfbbb425aac1edad4460a",
+    "qwen-runtime-manifest.json": "779aef0482c500bd8e178e35b1be5a01d8ec710eb22c841daa0cd78a9456e60f"
+  },
+  "bundledHostProfile": {
+    "voiceId": "original-host-v1",
+    "profileSha256": "b2948c2f7a42d60b920fe2e8355b660ac68701abdf353759db845bca425e7709",
+    "referenceSha256": "1cd786f2cf9c15bf66e116ca46dd391d58a3d812843f290229aebbec6014efdd",
+    "files": {
+      "README.md": "30ca34077661543552ef40a4398495424955d236b3d45ae5227a67f554544435",
+      "approval.json": "6269ab3ef795e10ee158fab412ce2764e8839b216719a110f872577f5d83fe4b",
+      "profile.json": "b2948c2f7a42d60b920fe2e8355b660ac68701abdf353759db845bca425e7709",
+      "provenance.json": "f75c27d56b002b4f05dd81802200951b9dd76eb3289b727af8d643847c24a27e",
+      "reference.wav": "1cd786f2cf9c15bf66e116ca46dd391d58a3d812843f290229aebbec6014efdd"
+    }
+  }
+}

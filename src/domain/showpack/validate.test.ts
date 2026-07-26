@@ -97,4 +97,68 @@ describe('validateShowpack', () => {
       expect(result.issues.some((issue) => issue.path.includes('/assets/0/path'))).toBe(true);
     }
   });
+
+  it('defaults authored sound playback to a blocking one-shot', () => {
+    const pack = makeTestShowpack();
+    pack.manifest.assets.push({
+      id: 'sting',
+      path: 'sting.wav',
+      kind: 'audio',
+      sha256: 'a'.repeat(64),
+      bytes: 10,
+      license: 'CC0-1.0',
+      attribution: '',
+    });
+    pack.episode.opening.push({
+      type: 'sound',
+      id: 'opening-sting',
+      assetId: 'sting',
+      action: 'play',
+      gainDb: -3,
+      fadeMs: 0,
+    } as never);
+
+    const result = validateShowpack(pack);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const cue = result.pack.episode.opening.at(-1);
+      expect(cue?.type === 'sound' && cue.loop).toBe(false);
+    }
+  });
+
+  it('rejects sound cues that point at non-audio media', () => {
+    const pack = makeTestShowpack();
+    pack.manifest.assets.push({
+      id: 'poster',
+      path: 'poster.png',
+      kind: 'image',
+      sha256: 'a'.repeat(64),
+      bytes: 10,
+      license: 'CC0-1.0',
+      attribution: '',
+    });
+    pack.episode.opening.push({
+      type: 'sound',
+      id: 'play-the-poster',
+      assetId: 'poster',
+      action: 'play',
+      gainDb: 0,
+      fadeMs: 0,
+      loop: false,
+    });
+
+    const result = validateShowpack(pack);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'sound_asset_not_audio',
+          }),
+        ]),
+      );
+    }
+  });
 });

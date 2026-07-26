@@ -2,6 +2,7 @@ import type { Cue, CueSequence } from '../domain/showpack/schema.js';
 import type {
   VoiceAssetManifest,
   VoiceAssetManifestEntry,
+  VoicePreflightActivity,
   VoicePreflightStatus,
 } from '../domain/voice/preflight.js';
 
@@ -15,6 +16,7 @@ export interface VoiceLoadProgress {
   cached: number;
   voiceName: string;
   message: string;
+  activity: VoicePreflightActivity | null;
 }
 
 export interface VoicePlaybackCallbacks {
@@ -29,12 +31,43 @@ interface LoadedVoiceAsset {
   objectUrl: string;
 }
 
+export interface ShowpackAudioAssetManifestEntry {
+  id: string;
+  kind: 'audio';
+  bytes: number;
+  sha256: string;
+}
+
+interface ShowpackAssetManifestResponse {
+  assets: Array<{
+    id: string;
+    kind: 'audio' | 'image' | 'font' | 'video';
+    bytes: number;
+    sha256: string;
+  }>;
+}
+
+export interface LoadedShowpackAudioAsset {
+  manifest: ShowpackAudioAssetManifestEntry;
+  objectUrl: string;
+}
+
+interface ActiveShowpackSound {
+  audio: HTMLAudioElement;
+  masterVolume: number;
+  cancel?: (error: Error) => void;
+}
+
 const HOST_HEADER = 'X-YAW-HOST-KEY';
 const STATUS_POLL_MS = 750;
 const AUDIO_LOAD_CONCURRENCY = 6;
 
 function abortError(): DOMException {
   return new DOMException('Voice playback was interrupted.', 'AbortError');
+}
+
+function decibelsToLinear(decibels: number): number {
+  return Math.max(0, Math.min(1, 10 ** (decibels / 20)));
 }
 
 function waitFor(ms: number, signal?: AbortSignal): Promise<void> {
@@ -97,6 +130,8 @@ async function loadWithConcurrency<T>(
 
 export class VoiceBank {
   readonly #assets = new Map<string, LoadedVoiceAsset>();
+  readonly #showpackAudio = new Map<string, LoadedShowpackAudioAsset>();
+  readonly #activeShowpackSounds = new Map<string, ActiveShowpackSound>();
   #activeAudio: HTMLAudioElement | null = null;
   #disposed = false;
   #muted = false;
@@ -104,8 +139,10 @@ export class VoiceBank {
   constructor(
     readonly manifest: VoiceAssetManifest,
     assets: Map<string, LoadedVoiceAsset>,
+    showpackAudio: Map<string, LoadedShowpackAudioAsset> = new Map(),
   ) {
     this.#assets = assets;
+    this.#showpackAudio = showpackAudio;
   }
 
   get voiceName(): string {
@@ -119,12 +156,16 @@ export class VoiceBank {
   setMuted(muted: boolean): void {
     this.#muted = muted;
     if (this.#activeAudio) this.#activeAudio.muted = muted;
+    for (const { audio } of this.#activeShowpackSounds.values()) audio.muted = muted;
   }
 
   async unlock(): Promise<void> {
-    const first = this.#assets.values().next().value as LoadedVoiceAsset | undefined;
-    if (!first || this.#disposed) return;
-    const audio = new Audio(first.objectUrl);
+    const firstVoice = this.#assets.values().next().value as LoadedVoiceAsset | undefined;
+    const firstShowpack = this.#showpackAudio.values().next().value as
+      LoadedShowpackAudioAsset | undefined;
+    const source = firstVoice?.objectUrl ?? firstShowpack?.objectUrl;
+    if (!source || this.#disposed) return;
+    const audio = new Audio(source);
     audio.muted = true;
     try {
       await audio.play();
@@ -138,19 +179,23 @@ export class VoiceBank {
 
   stop(): void {
     const audio = this.#activeAudio;
-    if (!audio) return;
-    this.#activeAudio = null;
-    const originalVolume = audio.volume;
-    let step = 0;
-    const fade = window.setInterval(() => {
-      step += 1;
-      audio.volume = Math.max(0, originalVolume * (1 - step / 4));
-      if (step >= 4) {
-        window.clearInterval(fade);
-        audio.pause();
-        audio.currentTime = 0;
-      }
-    }, 15);
+    if (audio) {
+      this.#activeAudio = null;
+      const originalVolume = audio.volume;
+      let step = 0;
+      const fade = window.setInterval(() => {
+        step += 1;
+        audio.volume = Math.max(0, originalVolume * (1 - step / 4));
+        if (step >= 4) {
+          window.clearInterval(fade);
+          audio.pause();
+          audio.currentTime = 0;
+        }
+      }, 15);
+    }
+    for (const assetId of [...this.#activeShowpackSounds.keys()]) {
+      this.#stopShowpackSoundImmediately(assetId);
+    }
   }
 
   async playSequence(
@@ -158,36 +203,48 @@ export class VoiceBank {
     { signal, muted = false, volume = 1, onCue }: VoicePlaybackCallbacks = {},
   ): Promise<void> {
     if (this.#disposed) throw new Error('The voice bank has already been disposed.');
-    for (const cue of cues) {
-      if (signal?.aborted) throw abortError();
+    const sequenceSounds = new Set<string>();
+    try {
+      for (const cue of cues) {
+        if (signal?.aborted) throw abortError();
 
-      if (cue.type === 'pause') {
-        onCue?.(cue);
-        await waitFor(cue.durationMs, signal);
-        continue;
-      }
-      if (cue.type === 'stage') {
-        onCue?.(cue);
-        await waitFor(cue.durationMs, signal);
-        continue;
-      }
-      if (cue.type !== 'line') {
-        onCue?.(cue);
-        continue;
-      }
+        if (cue.type === 'pause') {
+          onCue?.(cue);
+          await waitFor(cue.durationMs, signal);
+          continue;
+        }
+        if (cue.type === 'stage') {
+          onCue?.(cue);
+          await waitFor(cue.durationMs, signal);
+          continue;
+        }
+        if (cue.type === 'sound') {
+          onCue?.(cue);
+          if (cue.action === 'play') sequenceSounds.add(cue.assetId);
+          await this.#applyShowpackSoundCue(cue, Math.max(0, Math.min(1, volume)), muted, signal);
+          continue;
+        }
+        if (cue.type !== 'line') {
+          onCue?.(cue);
+          continue;
+        }
 
-      const loaded = this.#assets.get(cue.id);
-      if (!loaded) throw new Error(`The pre-cooked voice clip "${cue.id}" is missing.`);
-      await waitFor(loaded.manifest.pauseBeforeMs, signal);
-      onCue?.(cue);
-      if (muted || this.#muted) {
-        await waitFor(loaded.manifest.durationMs, signal);
-      } else {
-        await this.#playAsset(loaded, Math.max(0, Math.min(1, volume)), signal);
+        const loaded = this.#assets.get(cue.id);
+        if (!loaded) throw new Error(`The pre-cooked voice clip "${cue.id}" is missing.`);
+        await waitFor(loaded.manifest.pauseBeforeMs, signal);
+        onCue?.(cue);
+        if (muted || this.#muted) {
+          await waitFor(loaded.manifest.durationMs, signal);
+        } else {
+          await this.#playAsset(loaded, Math.max(0, Math.min(1, volume)), signal);
+        }
+        await waitFor(loaded.manifest.pauseAfterMs, signal);
       }
-      await waitFor(loaded.manifest.pauseAfterMs, signal);
+      onCue?.(null);
+    } catch (error) {
+      for (const assetId of sequenceSounds) this.#stopShowpackSoundImmediately(assetId);
+      throw error;
     }
-    onCue?.(null);
   }
 
   dispose(): void {
@@ -195,7 +252,158 @@ export class VoiceBank {
     this.#disposed = true;
     this.stop();
     for (const asset of this.#assets.values()) URL.revokeObjectURL(asset.objectUrl);
+    for (const asset of this.#showpackAudio.values()) URL.revokeObjectURL(asset.objectUrl);
     this.#assets.clear();
+    this.#showpackAudio.clear();
+  }
+
+  #stopShowpackSoundImmediately(assetId: string, reason: Error = abortError()): void {
+    const active = this.#activeShowpackSounds.get(assetId);
+    if (!active) return;
+    this.#activeShowpackSounds.delete(assetId);
+    active.audio.pause();
+    active.audio.currentTime = 0;
+    active.cancel?.(reason);
+  }
+
+  async #fadeShowpackVolume(
+    audio: HTMLAudioElement,
+    target: number,
+    durationMs: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const clampedTarget = Math.max(0, Math.min(1, target));
+    if (durationMs <= 0) {
+      audio.volume = clampedTarget;
+      return;
+    }
+    const start = audio.volume;
+    const steps = Math.max(1, Math.ceil(durationMs / 25));
+    for (let step = 1; step <= steps; step += 1) {
+      await waitFor(durationMs / steps, signal);
+      audio.volume = start + (clampedTarget - start) * (step / steps);
+    }
+  }
+
+  async #applyShowpackSoundCue(
+    cue: Extract<Cue, { type: 'sound' }>,
+    volume: number,
+    muted: boolean,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (cue.action === 'play') {
+      await this.#playShowpackSound(cue, volume, muted, signal);
+      return;
+    }
+
+    const active = this.#activeShowpackSounds.get(cue.assetId);
+    if (!active) {
+      if (cue.action === 'stop') return;
+      throw new Error(
+        `Showpack sound "${cue.assetId}" cannot be ducked because it is not playing.`,
+      );
+    }
+
+    if (cue.action === 'duck') {
+      try {
+        await this.#fadeShowpackVolume(
+          active.audio,
+          active.masterVolume * decibelsToLinear(cue.gainDb),
+          cue.fadeMs,
+          signal,
+        );
+      } catch (error) {
+        if ((error as { name?: string }).name === 'AbortError') {
+          this.#stopShowpackSoundImmediately(cue.assetId);
+        }
+        throw error;
+      }
+      return;
+    }
+
+    try {
+      await this.#fadeShowpackVolume(active.audio, 0, cue.fadeMs, signal);
+    } catch (error) {
+      this.#stopShowpackSoundImmediately(cue.assetId);
+      throw error;
+    }
+    this.#stopShowpackSoundImmediately(cue.assetId);
+  }
+
+  async #playShowpackSound(
+    cue: Extract<Cue, { type: 'sound' }>,
+    volume: number,
+    muted: boolean,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) throw abortError();
+    const loaded = this.#showpackAudio.get(cue.assetId);
+    if (!loaded) throw new Error(`Showpack sound asset "${cue.assetId}" is missing.`);
+
+    this.#stopShowpackSoundImmediately(cue.assetId);
+    const audio = new Audio(loaded.objectUrl);
+    const targetVolume = volume * decibelsToLinear(cue.gainDb);
+    audio.preload = 'auto';
+    audio.loop = cue.loop;
+    audio.volume = cue.fadeMs > 0 ? 0 : targetVolume;
+    audio.muted = muted || this.#muted;
+    const active: ActiveShowpackSound = {
+      audio,
+      masterVolume: volume,
+    };
+    this.#activeShowpackSounds.set(cue.assetId, active);
+
+    let resolvePlayback!: () => void;
+    let rejectPlayback!: (error: Error) => void;
+    const completion = new Promise<void>((resolve, reject) => {
+      resolvePlayback = resolve;
+      rejectPlayback = reject;
+    });
+    const cleanup = () => {
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const onEnded = () => {
+      cleanup();
+      if (this.#activeShowpackSounds.get(cue.assetId)?.audio === audio) {
+        this.#activeShowpackSounds.delete(cue.assetId);
+      }
+      resolvePlayback();
+    };
+    const onError = () => {
+      this.#stopShowpackSoundImmediately(
+        cue.assetId,
+        new Error(`Showpack sound "${cue.assetId}" could not be played.`),
+      );
+    };
+    const onAbort = () => {
+      this.#stopShowpackSoundImmediately(cue.assetId, abortError());
+    };
+    active.cancel = (error) => {
+      cleanup();
+      rejectPlayback(error);
+    };
+    audio.addEventListener('ended', onEnded, { once: true });
+    audio.addEventListener('error', onError, { once: true });
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      await audio.play();
+      await this.#fadeShowpackVolume(audio, targetVolume, cue.fadeMs, signal);
+    } catch (error) {
+      cleanup();
+      this.#stopShowpackSoundImmediately(cue.assetId);
+      void completion.catch(() => undefined);
+      throw error instanceof Error ? error : new Error('Showpack audio playback was blocked.');
+    }
+
+    if (cue.loop) {
+      cleanup();
+      delete active.cancel;
+      return;
+    }
+    await completion;
   }
 
   async #playAsset(asset: LoadedVoiceAsset, volume: number, signal?: AbortSignal): Promise<void> {
@@ -222,7 +430,8 @@ export class VoiceBank {
         reject(new Error('A pre-cooked host clip could not be played.'));
       };
       const onAbort = () => {
-        this.stop();
+        audio.pause();
+        audio.currentTime = 0;
         cleanup();
         reject(abortError());
       };
@@ -257,6 +466,7 @@ export async function prepareVoiceBank(
     cached: 0,
     voiceName: 'Local host',
     message: 'Inspecting the episode voice cache…',
+    activity: null,
   });
 
   let status: VoicePreflightStatus;
@@ -282,47 +492,106 @@ export async function prepareVoiceBank(
     hostSecret,
     signal,
   );
-  const loaded = new Map<string, LoadedVoiceAsset>();
-  let completed = 0;
-  await loadWithConcurrency(manifest.assets, AUDIO_LOAD_CONCURRENCY, async (asset) => {
-    const response = await fetch(
-      `${runtimeOrigin}/api/voice/audio/${encodeURIComponent(asset.cueId)}`,
-      {
-        headers: { [HOST_HEADER]: hostSecret },
-        cache: 'force-cache',
-        signal,
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`Host clip "${asset.cueId}" answered ${response.status}.`);
+  const { body: showpackManifest } = await fetchJson<ShowpackAssetManifestResponse>(
+    `${runtimeOrigin}/api/showpack/assets`,
+    hostSecret,
+    signal,
+  );
+  if (!Array.isArray(showpackManifest.assets)) {
+    throw new Error('The showpack audio manifest is malformed.');
+  }
+  const showpackAudio: ShowpackAudioAssetManifestEntry[] = [];
+  for (const asset of showpackManifest.assets) {
+    if (
+      typeof asset.id !== 'string' ||
+      !Number.isSafeInteger(asset.bytes) ||
+      asset.bytes < 1 ||
+      typeof asset.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(asset.sha256)
+    ) {
+      throw new Error('The showpack audio manifest contains an invalid asset.');
     }
-    const blob = await response.blob();
-    if (blob.size < 46) throw new Error(`Host clip "${asset.cueId}" is incomplete.`);
-    loaded.set(asset.cueId, {
-      manifest: asset,
-      objectUrl: URL.createObjectURL(blob),
-    });
-    completed += 1;
+    if (asset.kind === 'audio') showpackAudio.push({ ...asset, kind: 'audio' });
+  }
+
+  const loaded = new Map<string, LoadedVoiceAsset>();
+  const loadedShowpackAudio = new Map<string, LoadedShowpackAudioAsset>();
+  const totalAssets = manifest.assets.length + showpackAudio.length;
+  let completed = 0;
+  const publishLoadingProgress = () =>
     onProgress({
       phase: 'loading',
       completed,
-      total: manifest.assets.length,
+      total: totalAssets,
       rendered: status.rendered,
       cached: status.cached,
       voiceName: manifest.voiceName,
-      message: `Loading finished host audio… ${completed} / ${manifest.assets.length}`,
+      message: `Loading finished show audio… ${completed} / ${totalAssets}`,
+      activity: null,
     });
-  });
 
-  const bank = new VoiceBank(manifest, loaded);
+  try {
+    await loadWithConcurrency(manifest.assets, AUDIO_LOAD_CONCURRENCY, async (asset) => {
+      const response = await fetch(
+        `${runtimeOrigin}/api/voice/audio/${encodeURIComponent(asset.cueId)}`,
+        {
+          headers: { [HOST_HEADER]: hostSecret },
+          cache: 'force-cache',
+          signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Host clip "${asset.cueId}" answered ${response.status}.`);
+      }
+      const blob = await response.blob();
+      if (blob.size < 46) throw new Error(`Host clip "${asset.cueId}" is incomplete.`);
+      loaded.set(asset.cueId, {
+        manifest: asset,
+        objectUrl: URL.createObjectURL(blob),
+      });
+      completed += 1;
+      publishLoadingProgress();
+    });
+
+    await loadWithConcurrency(showpackAudio, AUDIO_LOAD_CONCURRENCY, async (asset) => {
+      const response = await fetch(
+        `${runtimeOrigin}/api/showpack/assets/${encodeURIComponent(asset.id)}`,
+        {
+          headers: { [HOST_HEADER]: hostSecret },
+          cache: 'force-cache',
+          signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Showpack sound "${asset.id}" answered ${response.status}.`);
+      }
+      const blob = await response.blob();
+      if (blob.size !== asset.bytes) {
+        throw new Error(`Showpack sound "${asset.id}" failed its size integrity check.`);
+      }
+      loadedShowpackAudio.set(asset.id, {
+        manifest: asset,
+        objectUrl: URL.createObjectURL(blob),
+      });
+      completed += 1;
+      publishLoadingProgress();
+    });
+  } catch (error) {
+    for (const asset of loaded.values()) URL.revokeObjectURL(asset.objectUrl);
+    for (const asset of loadedShowpackAudio.values()) URL.revokeObjectURL(asset.objectUrl);
+    throw error;
+  }
+
+  const bank = new VoiceBank(manifest, loaded, loadedShowpackAudio);
   onProgress({
     phase: 'ready',
-    completed: manifest.assets.length,
-    total: manifest.assets.length,
+    completed: totalAssets,
+    total: totalAssets,
     rendered: status.rendered,
     cached: status.cached,
     voiceName: manifest.voiceName,
-    message: `${manifest.assets.length} lines cooked, measured, and loaded.`,
+    message: `${manifest.assets.length} host lines and ${showpackAudio.length} show sounds loaded.`,
+    activity: null,
   });
   return bank;
 }

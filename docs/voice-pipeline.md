@@ -1,108 +1,100 @@
 # Local Voice Pipeline
 
-The host must be original, expressive, and reproducible. The project will not
-train on Jackbox gameplay or imitate Tom Gottlieb, Cookie Masterson, or another
-identifiable performer.
+The host is original, expressive, reproducible, and fully local. The project does not
+train on Jackbox gameplay or imitate Tom Gottlieb, Cookie Masterson, or any identifiable
+performer.
 
-## Production shape
+## Production flow
 
 ```text
-Episode import
-→ enumerate every reachable spoken cue
-→ resolve semantic delivery presets
-→ generate multiple takes where required
-→ automatic audio QA
-→ human audition for hero lines
-→ lossless master + playback asset
-→ immutable render manifest
-→ model-free party playback
+Import episode
+→ validate every branch and enumerate every reachable spoken cue
+→ verify Voice 2 approval, reference hash, runtime receipt, model hashes, and worker
+→ render every missing cue with Qwen3-TTS Base
+→ add literal 200 ms zero-sample guards
+→ run offline waveform and Whisper transcript QA on every cue
+→ verify complete cue coverage and build the playback manifest
+→ preload host speech
+→ unlock Start
+→ play cached WAV files with no model work during the match
 ```
 
-The first model family to benchmark is
-[Resemble AI Chatterbox](https://github.com/resemble-ai/chatterbox), which is
-MIT licensed. Chatterbox Original exposes exaggeration and guidance controls;
-Turbo is useful for nonverbal tags and faster generation; Nano is the CPU
-fallback.
+Qwen3-TTS 0.6B Base is the episode renderer. It creates a reusable voice-clone prompt
+from the exact approved Voice 2 WAV and transcript. The 1.7B VoiceDesign model was used
+only to create the audition; production players do not download it.
 
-[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS), Apache-2.0, is the planned
-one-time voice-design tool. It can audition an original voice from a written
-description before a clean reference is frozen into a versioned voice card.
-
-The current development PC has an RTX 3060 Ti with 8 GB VRAM, an i5-11400F,
-and 16 GB system memory. Only one GPU engine may be loaded at once.
+The approved reference is candidate `qwen-host-02`, seed `1730324455`, SHA-256
+`1cd786f2cf9c15bf66e116ca46dd391d58a3d812843f290229aebbec6014efdd`. It passed
+leading-word, ending-word, waveform, onset, and zero-word-error transcript checks before
+human approval.
 
 ## Worker boundary
 
-The game launches a restartable Python worker that communicates only through
-newline-delimited JSON over standard input/output. It is never exposed to the
-LAN.
+The trusted TypeScript preflight writes a bounded JSON manifest and launches one isolated
+Python worker. The worker:
 
-Message families:
+- operates with Hugging Face and Transformers in offline mode;
+- loads only revision-pinned local Base and ASR directories;
+- verifies the immutable approval document and reference hash;
+- refuses duplicate cue IDs, output paths, pre-existing outputs, unsafe IDs, or oversized
+  text;
+- writes to temporary files and promotes clips only after the complete batch passes QA;
+- emits typed completion progress only after each cue has passed QA;
+- never receives player-entered display names and is never exposed to the LAN.
 
-- `hello` / `capabilities`
-- `render` / `progress` / `result`
-- `cancel`
-- `error`
-- `shutdown`
+There is no pitch shifting, tempo stretching, normalization, amplitude trimming, model
+fade, or voice-changing post-process. The only waveform addition is literal zero-sample
+guard silence to protect first and final consonants.
 
-The TypeScript contract lives in `src/domain/voice/contract.ts`. Files carry
-audio; NDJSON only carries bounded metadata and paths selected by the trusted
-runtime.
+## Runtime trust
+
+The one-click Windows setup installs into a unique staging environment. It downloads
+exact model revisions, hashes the complete required file inventory, loads both production
+models without generating audio, writes a schema-versioned receipt, and atomically
+promotes the verified runtime. A previous working runtime is restored if the promoted
+environment fails its final-path probe.
+
+Loose setup and worker resources are checked against hashes stored inside Electron's
+integrity-protected application bundle. The persisted profile, approval, reference,
+runtime contract, model inventory, and package versions must all agree before selection.
 
 ## Cache identity
 
-Each cue cache key hashes:
+Each cue cache key covers:
 
-- Engine ID
-- Pinned model revision
-- Voice-profile hash
-- Normalized spoken text
-- Delivery preset and revision
-- Energy and pace
-- Scripted pauses
-- Pronunciation-lexicon revision
-- Post-processing revision
+- engine and package versions;
+- Base and ASR repositories and revisions;
+- runtime contract and QA-policy revisions;
+- approval and reference hashes;
+- normalized spoken text;
+- delivery, pace, energy, and scripted pauses;
+- pronunciation substitutions and their algorithm revision;
+- generation seed and generation settings;
+- the explicit no-pitch/no-tempo/no-trim post-processing policy.
 
-Changing one roast rerenders one roast. Changing the host voice or model
-revision invalidates every affected line.
-
-## Original host casting brief
-
-> Original American male trivia host, late thirties to early forties. Agile
-> mid-baritone, crisp consonants, quick conversational rhythm, precise comic
-> timing, and a warm human undertone beneath smug amusement. Elastic pitch
-> without sounding like a radio announcer. Capable of dry understatement,
-> fake sympathy, conspiratorial intimacy, sudden excitement, and a huge
-> controlled finale shout. Distinctive but not reminiscent of any named
-> performer or existing character.
-
-The chosen audition will record:
-
-- Model and revision
-- Seed and full design prompt
-- Creation date
-- Synthetic provenance
-- Reference-audio hash
-- Approved delivery samples
+Changing one roast rerenders one roast. Changing Voice 2, its approval, the generation
+contract, or a model revision invalidates every affected line.
 
 ## Audio QA
 
-Every generated take must pass:
+Every new clip must satisfy:
 
-- Non-empty and finite samples
-- Duration and outer-silence limits
-- Clipping and peak checks
-- Decode check after output encoding
-- Local ASR comparison for missing names or words
-- Loudness normalization and true-peak ceiling
+- valid bounded mono audio with finite samples;
+- no raw sample outside the legal full-scale range;
+- a low maximum full-scale sample ratio;
+- detected speech with bounded onset and trailing silence;
+- plausible duration for the expected word count;
+- the expected first and last spoken word;
+- word error rate at or below the pinned policy threshold.
 
-Important openings, sponsors, special-round intros, and title drops receive
-multiple takes and human auditioning. Automated metrics cannot determine
-whether a joke lands.
+If any line fails, no clip in that render batch is promoted and **Start remains locked**.
+Human listening is still required to approve a new host identity because automated QA
+cannot decide whether a voice is appealing or whether a joke lands.
 
 ## Distribution
 
-The voice runtime and model packages remain optional. A creator machine cooks
-an episode once. The exported baked showpack contains its approved speech, so
-the lightweight party PC does not need Python, CUDA, a GPU, or internet
-access.
+The current Windows host installs its runtime once and reuses content-addressed speech
+across episodes. Python and the GPU/CPU are idle while a cooked match is playing.
+
+Embedding approved speech into exported `.showpack` files so another host PC needs no
+local model installation remains a future distribution mode.

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { canonicalJson } from '../canonical.js';
-import { buildPlayerGroupCalloutCues } from '../game/player-callouts.js';
+import { buildPlayerCalloutCues } from '../game/player-callouts.js';
 import type { Cue, Showpack } from '../showpack/schema.js';
 
 const PRONUNCIATION_APPLICATION_REVISION = 'whole-token-substitution-v2';
@@ -87,9 +87,10 @@ function collectSequences(pack: Showpack): Cue[][] {
     ...pack.episode.finale.loserRoasts,
   );
 
-  // These short phrases let the reveal director address stable seat numbers
-  // without generating names or any speech during the live match.
-  sequences.push(buildPlayerGroupCalloutCues(pack.manifest.maxPlayers));
+  // These reusable phrases let the reveal director address stable seat numbers
+  // without generating names or speech during the live match. Rendering only
+  // individual seats avoids the 2^N - 1 explosion of every possible group.
+  sequences.push(buildPlayerCalloutCues(pack.manifest.maxPlayers));
   return sequences;
 }
 
@@ -110,7 +111,7 @@ export function buildVoiceRenderPlan(
 
       const withoutKey: Omit<PlannedLine, 'cacheKey'> = {
         cueId: cue.id,
-        text: cue.text,
+        text: cue.spokenText ?? cue.text,
         delivery: cue.delivery,
         pacePermille: Math.round(cue.pace * 1_000),
         energyPermille: Math.round(cue.energy * 1_000),

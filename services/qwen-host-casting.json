@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "castingRevision": "yaw-original-host-casting-v1",
+  "baseSeed": 194817,
+  "minimumPassingCandidates": 2,
+  "language": "English",
+  "referenceText": "Welcome to You're All Wrong. Tonight, four innocent buttons are about to become evidence. Read carefully, answer quickly, and remember: confidence is just a mistake wearing a nicer jacket.",
+  "generation": {
+    "doSample": true,
+    "topK": 50,
+    "topP": 1.0,
+    "temperature": 0.9,
+    "repetitionPenalty": 1.05,
+    "subtalkerDoSample": true,
+    "subtalkerTopK": 50,
+    "subtalkerTopP": 1.0,
+    "subtalkerTemperature": 0.9,
+    "maxNewTokens": 2048
+  },
+  "directions": [
+    "An original American male comedy host in his late thirties. Natural mid-baritone with a faint dry edge, close-mic clarity, crisp first consonants, and quick connected speech. He sounds privately amused rather than cheerful, lets one tiny pause expose the sarcastic turn, and lands the final image like a thought he almost kept to himself. Human breath, irregular phrasing, no radio-announcer bass, no sing-song cadence, no imitation of any real performer.",
+    "An original American male trivia presenter around forty. Warm middle register, lean resonance, precise diction without theatrical over-enunciation, and agile conversational timing. The opening is inviting but skeptical; the sentence gathers momentum, then cools into an understated punchline. Varied pitch follows the meaning instead of a repeated melody. Dry studio recording, no commercial polish and no resemblance to a named person.",
+    "An original American male comic speaker in his mid-thirties. Slightly brighter mid-range, intelligent and relaxed, with clean attacks on words, lightly tossed-off connective phrases, and a controlled flash of disbelief at the reversal. He never sounds bubbly, synthetic, stern, or like a trailer narrator. Intimate close microphone, natural breaths, unpredictable clause lengths, fully original identity.",
+    "An original American male game-show host in his early forties. Flexible mid-low voice with a subtle rough texture and an observant, mildly exhausted sense of humor. He begins with believable welcome, accelerates through the setup, then makes the last phrase drier and more personal. Clear consonants, elastic but natural pitch, no habitual downward cadence, no broadcast boom, no impersonation.",
+    "An original American male presenter around forty with an unforced mid-range voice. Erudite but casual, warm underneath restrained smugness, and capable of shifting from mock sincerity to quiet amusement within one sentence. Smooth connected phrasing, exact comic stress, crisp word beginnings, and real human micro-pauses. Clean dry studio sound; distinctive without recalling an existing host or actor.",
+    "An original American male comedy narrator in his late thirties. Nimble mid-baritone, faint rasp only on stressed words, steady breath support, and quick natural rhythm. He treats the factual setup seriously enough to make the sarcastic image surprising, then releases the ending with controlled delight. No generic AI cadence, no constant smile, no announcer voice, and no imitation of a recognizable person."
+  ],
+  "selectionPolicy": [
+    "Reject any candidate that resembles a recognizable real person or existing character.",
+    "Reject clipped first words, slurred consonants, repeated cadence, synthetic warble, broadcast bass, and unexplained pronunciation changes.",
+    "Only candidates that pass deterministic waveform, duration, onset, and offline transcript QA may be presented for listening.",
+    "Automated QA does not approve a voice. A human must still approve identity, performance, and consistency before it can render a show."
+  ]
+}

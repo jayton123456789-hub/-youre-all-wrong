@@ -1,5 +1,10 @@
 # MAKE AN EPISODE
 
+> The desktop lobby's **MAKE EPISODE** button is the authoritative authoring workflow.
+> It downloads a versioned ZIP containing the live schema, validated examples, voice
+> rules, checklists, and transcript-based tone study. Use that kit whenever possible;
+> this standalone document remains a readable development reference.
+
 This file is a copy-ready authoring prompt for an online AI. Attach it to a new
 chat, then describe the people, subjects, running jokes, difficulty, and content
 rating you want. The AI should return one spoiler-contained JSON source file

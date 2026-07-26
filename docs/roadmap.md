@@ -20,8 +20,8 @@
 
 - Active-session recovery after a complete desktop-app restart
 - Episode library and desktop file-import workflow
-- Full presentation sequencer that acknowledges audio/animation completion
-- Authored per-question poster layouts and art-direction descriptors
+- Full presentation sequencer that acknowledges audio and animation completion
+- Authored per-question layouts and art-direction descriptors
 - Classification round
 - Original Final Rush round
 - Dynamic winner/name roast materialization
@@ -31,12 +31,13 @@
 
 ## Voice cook
 
-- Reproducible Python environment
-- Benchmark Chatterbox Original, Turbo, Nano, and Flash on this PC
-- Qwen voice-design audition tool
-- Original voice card and reference palette
-- Resumable content-addressed render queue
-- Audio QA and take audition screen
+- Reproducible, receipt-verified Qwen Python environment — implemented
+- Approved original Qwen Voice 2 identity and provenance — implemented
+- Qwen VoiceDesign audition tool — implemented
+- Fully pre-rendered Base clone queue and Start gate — implemented
+- Per-line waveform and offline transcript QA — implemented
+- Persistent cache-integrity sidecars
+- Visual take-audition and rejection screen
 - Baked-showpack export
 
 ## Release candidate

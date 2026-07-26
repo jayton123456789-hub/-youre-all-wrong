@@ -36,6 +36,7 @@ const LineCueSchema = z
     id: IdSchema,
     speaker: IdSchema.default('host'),
     text: z.string().trim().min(1).max(3_000),
+    spokenText: z.string().trim().min(1).max(3_000).optional(),
     delivery: DeliveryStyleSchema.default('conversational'),
     pace: z.number().min(0.65).max(1.35).default(1),
     energy: z.number().min(0).max(1).default(0.55),
@@ -75,6 +76,7 @@ const SoundCueSchema = z
     action: z.enum(['play', 'stop', 'duck']),
     gainDb: z.number().min(-60).max(12).default(0),
     fadeMs: z.number().int().min(0).max(30_000).default(0),
+    loop: z.boolean().default(false),
   })
   .strict();
 

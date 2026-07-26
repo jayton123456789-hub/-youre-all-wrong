@@ -123,14 +123,22 @@ if ($LASTEXITCODE -ne 0) {
   throw 'Failed to install Parler-TTS. Confirm Git is installed and GitHub is reachable.'
 }
 
+Write-Host 'Installing the pinned model-loading runtime...'
+& $python -m pip install accelerate==1.1.1
+if ($LASTEXITCODE -ne 0) {
+  throw 'Failed to install the Accelerate model-loading runtime.'
+}
+
 $requireCuda = if ($resolvedBackend -eq 'cpu') { '0' } else { '1' }
 & $python -c @"
+import accelerate
 import torch
 import transformers
 from parler_tts import ParlerTTSForConditionalGeneration
 print('Parler-TTS import: OK')
 print(f'PyTorch: {torch.__version__}')
 print(f'Transformers: {transformers.__version__}')
+print(f'Accelerate: {accelerate.__version__}')
 print(f'CUDA build: {torch.version.cuda}')
 print(f'CUDA available: {torch.cuda.is_available()}')
 if torch.cuda.is_available():

@@ -15,6 +15,22 @@ def emit(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False), flush=True)
 
 
+def prefer_working_windows_ipv4() -> None:
+    if os.name != "nt" or os.environ.get("YAW_CHATTERBOX_ALLOW_IPV6") == "1":
+        return
+
+    import socket
+
+    original_getaddrinfo = socket.getaddrinfo
+
+    def ipv4_first_getaddrinfo(*args: Any, **kwargs: Any) -> Any:
+        answers = original_getaddrinfo(*args, **kwargs)
+        ipv4 = [answer for answer in answers if answer[0] == socket.AF_INET]
+        return ipv4 or answers
+
+    socket.getaddrinfo = ipv4_first_getaddrinfo
+
+
 def apply_pronunciation(text: str, pronunciation: dict[str, str]) -> str:
     spoken = text
     for written, replacement in sorted(
@@ -151,6 +167,7 @@ def main() -> int:
     parser.add_argument("--manifest", required=True)
     args = parser.parse_args()
 
+    prefer_working_windows_ipv4()
     manifest_path = Path(args.manifest).resolve()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("protocolVersion") != 1:
@@ -163,12 +180,18 @@ def main() -> int:
         import torch
         import torchaudio
         import transformers
+        import urllib3.util.connection as urllib3_connection
         from chatterbox.tts import ChatterboxTTS
         from chatterbox.tts_turbo import ChatterboxTurboTTS
     except Exception as error:  # pragma: no cover - exercised on the target PC
         raise RuntimeError(
             "Chatterbox is not installed correctly. Run services/setup-chatterbox.ps1."
         ) from error
+
+    if os.name == "nt" and os.environ.get("YAW_CHATTERBOX_ALLOW_IPV6") != "1":
+        import socket
+
+        urllib3_connection.allowed_gai_family = lambda: socket.AF_INET
 
     requested_device = os.environ.get("YAW_CHATTERBOX_DEVICE", "auto").strip().lower()
     if requested_device not in {"auto", "cuda", "cpu"}:

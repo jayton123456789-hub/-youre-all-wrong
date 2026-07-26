@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "installerRevision": "yaw-qwen-runtime-v2",
+  "python": {
+    "major": 3,
+    "minor": 12,
+    "architecture": "64bit"
+  },
+  "packages": {
+    "qwenTts": "0.1.1",
+    "qwenTtsWheelSha256": "11a290d8dabc7ef91a90c54478c8ab19b3edb1d85c0882313721892bdc4af15d",
+    "transformers": "4.57.3",
+    "accelerate": "1.12.0",
+    "torch": "2.11.0",
+    "torchaudio": "2.11.0"
+  },
+  "torchIndexes": {
+    "cpu": "https://download.pytorch.org/whl/cpu",
+    "cu128": "https://download.pytorch.org/whl/cu128"
+  },
+  "attentionImplementation": "sdpa",
+  "models": {
+    "voiceDesign": {
+      "repository": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+      "revision": "5ecdb67327fd37bb2e042aab12ff7391903235d3",
+      "license": "Apache-2.0"
+    },
+    "base": {
+      "repository": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+      "revision": "5d83992436eae1d760afd27aff78a71d676296fc",
+      "license": "Apache-2.0"
+    },
+    "asr": {
+      "repository": "openai/whisper-small.en",
+      "revision": "e8727524f962ee844a7319d92be39ac1bd25655a",
+      "license": "Apache-2.0"
+    }
+  },
+  "qa": {
+    "policyRevision": "yaw-qwen-audio-qa-v1",
+    "silentGuardMs": 200,
+    "maximumWordErrorRate": 0.18,
+    "maximumEdgeSilenceMs": 2500,
+    "maximumFullScaleRatio": 0.005
+  }
+}
