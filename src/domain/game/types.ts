@@ -294,6 +294,8 @@ export interface PublicQuestion {
 
 export interface PublicReveal {
   questionId: string;
+  category: string;
+  promptText: string;
   correctAnswerId: string;
   correctAnswerText: string;
   answers: Array<{ id: string; text: string }>;

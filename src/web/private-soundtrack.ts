@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type ShowPhase = 'lobby' | 'intro' | 'question' | 'reveal' | 'finale' | 'complete';
 
@@ -29,6 +29,7 @@ export function usePrivateSoundtrack(
   const tracks = useRef(new Map<string, string>());
   const active = useRef<HTMLAudioElement | null>(null);
   const activePhase = useRef<ShowPhase | null>(null);
+  const [libraryRevision, setLibraryRevision] = useState(0);
 
   useEffect(() => {
     if (!hostSecret) return;
@@ -53,6 +54,7 @@ export function usePrivateSoundtrack(
           tracks.current.set(track.name, url);
         }),
       );
+      if (!controller.signal.aborted) setLibraryRevision((revision) => revision + 1);
     })().catch(() => {
       // The private soundtrack is deliberately optional; the show remains playable without it.
     });
@@ -66,7 +68,7 @@ export function usePrivateSoundtrack(
   }, [hostSecret, runtimeOrigin]);
 
   useEffect(() => {
-    if (!phase || activePhase.current === phase) {
+    if (!phase || (activePhase.current === phase && active.current)) {
       if (active.current) active.current.muted = muted;
       return;
     }
@@ -84,5 +86,5 @@ export function usePrivateSoundtrack(
     audio.muted = muted;
     active.current = audio;
     void audio.play().catch(() => undefined);
-  }, [muted, phase]);
+  }, [libraryRevision, muted, phase]);
 }

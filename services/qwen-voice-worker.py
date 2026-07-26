@@ -30,7 +30,11 @@ MAXIMUM_TEXT_CHARACTERS = 4_000
 PRIMARY_RENDER_ATTEMPTS = 1
 MAXIMUM_RESCUE_ATTEMPTS = 8
 MAXIMUM_RENDER_ATTEMPTS = PRIMARY_RENDER_ATTEMPTS + MAXIMUM_RESCUE_ATTEMPTS
-RETRY_POLICY_REVISION = "yaw-qwen-deferred-rescue-v2"
+FALLBACK_ACCEPTANCE_ATTEMPT = 7
+MAXIMUM_FALLBACK_WORD_ERROR_RATE = 0.45
+MINIMUM_FALLBACK_TOKEN_RATIO = 0.70
+MAXIMUM_FALLBACK_TOKEN_RATIO = 1.30
+RETRY_POLICY_REVISION = "yaw-qwen-best-safe-take-v3"
 RENDER_POLICY_REVISION = "yaw-qwen-incremental-batch2-v1"
 MODEL_MARKER_NAME = ".yaw-model.json"
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,95}$", re.IGNORECASE)
@@ -111,6 +115,26 @@ class VoiceQualityReject(QwenVoiceError):
     """A generated take failed bounded audio/transcript QA and may be regenerated."""
 
 
+class TranscriptQualityReject(VoiceQualityReject):
+    """A structurally safe take disagreed with offline ASR."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        word_error_rate: float,
+        expected_tokens: int,
+        actual_tokens: int,
+        fallback_eligible: bool,
+    ) -> None:
+        super().__init__(message)
+        self.word_error_rate = word_error_rate
+        self.expected_tokens = expected_tokens
+        self.actual_tokens = actual_tokens
+        self.fallback_eligible = fallback_eligible
+        self.audio_metrics: AudioQaMetrics | None = None
+
+
 @dataclass(frozen=True)
 class AudioQaPolicy:
     revision: str
@@ -142,6 +166,15 @@ class AudioQaMetrics:
             "expectedTokens": self.expected_tokens,
             "transcribedTokens": self.transcribed_tokens,
         }
+
+
+@dataclass(frozen=True)
+class QaRejection:
+    reason: str
+    fallback_eligible: bool = False
+    transcript: str | None = None
+    metrics: AudioQaMetrics | None = None
+    wave_sha256: str | None = None
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -394,20 +427,39 @@ def transcript_qa(
             and actual[0] in ANSWER_LABEL_ALIASES[label]
         ):
             actual[0] = label
+    word_error_rate = edit_distance(expected, actual) / len(expected)
+    token_ratio = len(actual) / len(expected)
+    fallback_eligible = (
+        word_error_rate <= MAXIMUM_FALLBACK_WORD_ERROR_RATE
+        and MINIMUM_FALLBACK_TOKEN_RATIO
+        <= token_ratio
+        <= MAXIMUM_FALLBACK_TOKEN_RATIO
+    )
     if actual[0] != expected[0]:
-        raise VoiceQualityReject(
-            f'Offline ASR heard first word "{actual[0]}", expected "{expected[0]}".'
+        raise TranscriptQualityReject(
+            f'Offline ASR heard first word "{actual[0]}", expected "{expected[0]}".',
+            word_error_rate=word_error_rate,
+            expected_tokens=len(expected),
+            actual_tokens=len(actual),
+            fallback_eligible=fallback_eligible,
         )
     if len(expected) > 1 and actual[-1] != expected[-1]:
-        raise VoiceQualityReject(
-            f'Offline ASR heard final word "{actual[-1]}", expected "{expected[-1]}".'
+        raise TranscriptQualityReject(
+            f'Offline ASR heard final word "{actual[-1]}", expected "{expected[-1]}".',
+            word_error_rate=word_error_rate,
+            expected_tokens=len(expected),
+            actual_tokens=len(actual),
+            fallback_eligible=fallback_eligible,
         )
-    word_error_rate = edit_distance(expected, actual) / len(expected)
     if word_error_rate > maximum_word_error_rate:
-        raise VoiceQualityReject(
+        raise TranscriptQualityReject(
             "Offline transcript QA failed: "
             f"word error rate {word_error_rate:.3f} exceeds "
-            f"{maximum_word_error_rate:.3f}."
+            f"{maximum_word_error_rate:.3f}.",
+            word_error_rate=word_error_rate,
+            expected_tokens=len(expected),
+            actual_tokens=len(actual),
+            fallback_eligible=fallback_eligible,
         )
     return word_error_rate, len(expected), len(actual)
 
@@ -516,11 +568,24 @@ def waveform_qa(
             f"Speech is {spoken_duration_ms} ms for {expected_count} expected words."
         )
 
-    word_error_rate, expected_tokens, actual_tokens = transcript_qa(
-        expected_text,
-        transcribed_text,
-        policy.maximum_word_error_rate,
-    )
+    try:
+        word_error_rate, expected_tokens, actual_tokens = transcript_qa(
+            expected_text,
+            transcribed_text,
+            policy.maximum_word_error_rate,
+        )
+    except TranscriptQualityReject as error:
+        error.audio_metrics = AudioQaMetrics(
+            duration_ms=duration_ms,
+            spoken_duration_ms=spoken_duration_ms,
+            onset_ms=onset_ms,
+            trailing_silence_ms=trailing_silence_ms,
+            peak=peak,
+            transcript_word_error_rate=error.word_error_rate,
+            expected_tokens=error.expected_tokens,
+            transcribed_tokens=error.actual_tokens,
+        )
+        raise
     return AudioQaMetrics(
         duration_ms=duration_ms,
         spoken_duration_ms=spoken_duration_ms,
@@ -1442,25 +1507,15 @@ def render_episode(
         asr_device = "cpu"
         return transcribe(path)
 
-    def verify_and_commit(item: dict[str, Any]) -> str | None:
+    def commit_take(
+        item: dict[str, Any],
+        transcript: str,
+        metrics: AudioQaMetrics,
+        wave_sha256: str,
+        *,
+        accepted_warning: str | None = None,
+    ) -> None:
         temporary: Path = item["temporary"]
-        if "qualityReject" in item:
-            return str(item["qualityReject"])
-        try:
-            transcript = transcribe_with_fallback(temporary)
-            waveform, sample_rate = read_wave(temporary, sf, np)
-            metrics = waveform_qa(
-                waveform,
-                sample_rate,
-                item["qaTranscript"],
-                transcript,
-                policy,
-                np,
-            )
-            wave_sha256 = sha256_file(temporary)
-        except VoiceQualityReject as error:
-            return concise_exception(error)
-
         # Publication errors are infrastructure failures, not alternate reads of the
         # same cue. Never retry or overwrite a destination after this point.
         publish_verified_cache_entry(
@@ -1484,6 +1539,10 @@ def render_episode(
                 "sha256": wave_sha256,
                 "transcript": transcript,
                 "qa": metrics.json(),
+                "qualityStatus": (
+                    "accepted-with-warning" if accepted_warning else "passed"
+                ),
+                "qualityWarning": accepted_warning,
                 "priorFailures": list(
                     item["rescueLedger"].get("failures", [])
                 ),
@@ -1510,7 +1569,97 @@ def render_episode(
                 "total": len(seeded_jobs),
             }
         )
+
+    def verify_and_commit(item: dict[str, Any]) -> QaRejection | None:
+        temporary: Path = item["temporary"]
+        if "qualityReject" in item:
+            return QaRejection(reason=str(item["qualityReject"]))
+        transcript: str | None = None
+        try:
+            transcript = transcribe_with_fallback(temporary)
+            waveform, sample_rate = read_wave(temporary, sf, np)
+            metrics = waveform_qa(
+                waveform,
+                sample_rate,
+                item["qaTranscript"],
+                transcript,
+                policy,
+                np,
+            )
+            wave_sha256 = sha256_file(temporary)
+        except TranscriptQualityReject as error:
+            return QaRejection(
+                reason=concise_exception(error),
+                fallback_eligible=error.fallback_eligible,
+                transcript=transcript,
+                metrics=error.audio_metrics,
+                wave_sha256=(
+                    sha256_file(temporary)
+                    if error.fallback_eligible and error.audio_metrics is not None
+                    else None
+                ),
+            )
+        except VoiceQualityReject as error:
+            return QaRejection(reason=concise_exception(error))
+
+        commit_take(item, transcript, metrics, wave_sha256)
         return None
+
+    def retain_best_candidate(
+        deferred_item: dict[str, Any],
+        generated_item: dict[str, Any],
+        rejection: QaRejection,
+    ) -> None:
+        candidate = deferred_item.get("bestCandidate")
+        candidate_wer = (
+            float(candidate["rejection"].metrics.transcript_word_error_rate)
+            if candidate is not None
+            else math.inf
+        )
+        rejection_wer = (
+            float(rejection.metrics.transcript_word_error_rate)
+            if rejection.metrics is not None
+            else math.inf
+        )
+        if (
+            rejection.fallback_eligible
+            and rejection.transcript is not None
+            and rejection.metrics is not None
+            and rejection.wave_sha256 is not None
+            and rejection_wer < candidate_wer
+        ):
+            if candidate is not None:
+                candidate["item"]["temporary"].unlink(missing_ok=True)
+            deferred_item["bestCandidate"] = {
+                "item": generated_item,
+                "rejection": rejection,
+            }
+            return
+        generated_item["temporary"].unlink(missing_ok=True)
+
+    def accept_best_candidate(deferred_item: dict[str, Any]) -> bool:
+        candidate = deferred_item.get("bestCandidate")
+        if candidate is None:
+            return False
+        item = candidate["item"]
+        rejection: QaRejection = candidate["rejection"]
+        warning = (
+            "Accepted the best structurally safe take after "
+            f"{FALLBACK_ACCEPTANCE_ATTEMPT} attempts; offline transcript QA remained "
+            f"uncertain ({rejection.reason})"
+        )
+        commit_take(
+            item,
+            str(rejection.transcript),
+            rejection.metrics,
+            str(rejection.wave_sha256),
+            accepted_warning=warning,
+        )
+        deferred_item["status"] = "accepted-with-warning"
+        deferred_item["recoveredAttempt"] = int(item["attempt"])
+        deferred_item["recoveredProfile"] = str(item["generationProfile"])
+        deferred_item["qualityWarning"] = warning
+        return True
 
     generated_item_fields = {
         "temporary",
@@ -1599,9 +1748,8 @@ def render_episode(
                     continue
                 raise
             for item in generated_items:
-                reason = verify_and_commit(item)
-                if reason is not None:
-                    item["temporary"].unlink(missing_ok=True)
+                rejection = verify_and_commit(item)
+                if rejection is not None:
                     job = render_job_from_item(item)
                     failure = record_quality_failure(
                         job,
@@ -1609,15 +1757,15 @@ def render_episode(
                         generation_seed=int(item["generationSeed"]),
                         profile=str(item["generationProfile"]),
                         stage="primary",
-                        reason=reason,
+                        reason=rejection.reason,
                     )
-                    deferred.append(
-                        {
-                            "job": job,
-                            "failures": [failure],
-                            "status": "deferred",
-                        }
-                    )
+                    deferred_item = {
+                        "job": job,
+                        "failures": [failure],
+                        "status": "deferred",
+                    }
+                    retain_best_candidate(deferred_item, item, rejection)
+                    deferred.append(deferred_item)
                     emit(
                         {
                             "type": "qwen-deferred",
@@ -1628,7 +1776,7 @@ def render_episode(
                             "attempt": 1,
                             "maximumAttempts": MAXIMUM_RENDER_ATTEMPTS,
                             "profile": "approved-default",
-                            "reason": reason,
+                            "reason": rejection.reason,
                         }
                     )
             next_job_index += len(batch)
@@ -1704,8 +1852,11 @@ def render_episode(
                     generation_profile=profile,
                     generation_settings=rescue_generation,
                 )[0]
-                reason = verify_and_commit(retry_generated)
-                if reason is None:
+                rejection = verify_and_commit(retry_generated)
+                if rejection is None:
+                    candidate = deferred_item.pop("bestCandidate", None)
+                    if candidate is not None:
+                        candidate["item"]["temporary"].unlink(missing_ok=True)
                     deferred_item["status"] = "recovered"
                     deferred_item["recoveredAttempt"] = attempt
                     deferred_item["recoveredProfile"] = profile
@@ -1725,16 +1876,40 @@ def render_episode(
                         }
                     )
                     continue
-                retry_generated["temporary"].unlink(missing_ok=True)
                 failure = record_quality_failure(
                     job,
                     attempt=attempt,
                     generation_seed=retry_seed,
                     profile=profile,
                     stage="rescue",
-                    reason=reason,
+                    reason=rejection.reason,
                 )
                 deferred_item["failures"].append(failure)
+                retain_best_candidate(
+                    deferred_item,
+                    retry_generated,
+                    rejection,
+                )
+                if (
+                    attempt >= FALLBACK_ACCEPTANCE_ATTEMPT
+                    and accept_best_candidate(deferred_item)
+                ):
+                    rescued.append(deferred_item)
+                    remaining_parked = (
+                        len(next_active) + len(active) - active_index - 1
+                    )
+                    emit(
+                        {
+                            "type": "qwen-rescue",
+                            "operation": "render",
+                            "stage": "recovered",
+                            "cueId": job["cueId"],
+                            "attempt": attempt,
+                            "profile": profile,
+                            "remainingParked": remaining_parked,
+                        }
+                    )
+                    continue
                 next_active.append(deferred_item)
             active = next_active
 
@@ -1813,7 +1988,14 @@ def render_episode(
 
         report = {
             "schemaVersion": 1,
-            "status": "passed",
+            "status": (
+                "passed-with-warnings"
+                if any(
+                    job.get("qualityStatus") == "accepted-with-warning"
+                    for job in reports
+                )
+                else "passed"
+            ),
             "createdAt": datetime.now(timezone.utc).isoformat(),
             "engine": "qwen3-tts",
             "workflow": "VoiceDesign-to-reusable-Base-clone-prompt",
@@ -1830,6 +2012,10 @@ def render_episode(
                 "maximumAttemptsPerCue": MAXIMUM_RENDER_ATTEMPTS,
                 "deferredCount": len(deferred),
                 "recoveredCount": len(rescued),
+                "acceptedWithWarningCount": sum(
+                    item.get("status") == "accepted-with-warning"
+                    for item in rescued
+                ),
                 "deferredCues": [
                     deferred_summary(item) for item in deferred
                 ],

@@ -91,13 +91,18 @@ Markdown inside JSON strings.
    play all selected wrong branches, ordered by popularity and then authored
    answer order. Do not make separate branches contradict or depend on one
    another.
-6. `correctReaction` identifies or celebrates the correct result. It plays
-   after selected wrong material and after any matched conditional opener, so
-   do not write it as if everyone was correct.
+6. `correctReaction` begins the factual reveal. Do not write a blunt
+   "Player one, you're correct," "Correct answer," or generic congratulations.
+   Lead with the decisive fact so listeners can infer which choice won before
+   or as you naturally identify it. It plays after selected wrong material and
+   after any matched conditional opener, so do not write it as if everyone was
+   correct.
 7. `noAnswerReaction` is required. It must work when a player or the room runs
    out of time and must not claim that a specific answer was chosen.
-8. `explanation` should clearly explain why the answer is correct. Comedy is
-   welcome, but never instead of the fact.
+8. `explanation` completes the factual reveal and should clearly explain why
+   the answer is correct. The selected bubble remains pending while this beat
+   unfolds, then the score pays out. Comedy is welcome, but never instead of
+   the fact.
 9. `postQuestion` is optional and may be empty. Across a full episode, vary it:
    roughly one-third quick tags, one-third short scenes or monologues, and
    one-third empty or transition-only.

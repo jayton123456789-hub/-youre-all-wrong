@@ -90,6 +90,9 @@ const DIRECTIONS = [
 // The projectile waits 100 ms, flies for 700 ms, then gets a small render margin
 // before the score card settles and removes it from the tree.
 const SCORE_PROJECTILE_SETTLE_MS = 850;
+const CATEGORY_CARD_MINIMUM_MS = 1_800;
+const ANSWER_NARRATION_RATE = 1.16;
+const ANSWER_NARRATION_PAUSE_SCALE = 0.3;
 
 function useClock(intervalMs = 100): number {
   const [now, setNow] = useState(Date.now());
@@ -895,6 +898,33 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
       });
 
     const playAuthoredPresentation = async () => {
+      if (presentation.stage === 'prompt') {
+        for (const part of presentation.parts) {
+          const startedAt = performance.now();
+          await playPart(part);
+          if (part.id === 'category') {
+            await waitForBeat(
+              Math.max(0, CATEGORY_CARD_MINIMUM_MS - (performance.now() - startedAt)),
+              controller.signal,
+            );
+          }
+        }
+        return;
+      }
+
+      if (presentation.stage === 'answers') {
+        await voice.bank!.playSequence(presentation.cues, {
+          signal: controller.signal,
+          playbackRate: ANSWER_NARRATION_RATE,
+          pauseScale: ANSWER_NARRATION_PAUSE_SCALE,
+          onCue: (cue) => {
+            setActiveCue(cue);
+            if (cue) setActivePart(findPresentationPart(presentation, cue));
+          },
+        });
+        return;
+      }
+
       if (presentation.stage !== 'reveal') {
         await voice.bank!.playSequence(presentation.cues, {
           signal: controller.signal,
@@ -907,25 +937,45 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
       }
 
       setSettledRevealPlayers(new Set());
+      const pendingCorrectPlayerIds: string[] = [];
+      const settlePlayer = async (playerId: string, outcome: 'correct' | 'wrong') => {
+        setActiveRevealPlayerId(playerId);
+        setRevealOutcome(outcome);
+        playUiSound(outcome === 'correct' ? 'lock' : 'wrong');
+        await waitForBeat(SCORE_PROJECTILE_SETTLE_MS, controller.signal);
+        setSettledRevealPlayers((current) => new Set(current).add(playerId));
+        await waitForBeat(650, controller.signal);
+      };
       for (const part of presentation.parts) {
         const playerId = part.id.startsWith('player-') ? part.id.slice('player-'.length) : null;
         setActivePart(part.id);
         setActiveRevealPlayerId(playerId);
         setRevealOutcome('neutral');
         setActiveCue(null);
-        if (playerId) await waitForBeat(420, controller.signal);
+        if (playerId || part.id.startsWith('reaction-')) {
+          await waitForBeat(520, controller.signal);
+        }
         await playPart(part);
-        if (!playerId) continue;
+        if (!playerId) {
+          if (part.id === 'explanation') {
+            for (const pendingPlayerId of pendingCorrectPlayerIds.splice(0)) {
+              await settlePlayer(pendingPlayerId, 'correct');
+            }
+          }
+          continue;
+        }
 
         const result = snapshotRef.current?.reveal?.playerResults.find(
           (candidate) => candidate.playerId === playerId,
         );
-        const outcome = result?.correct ? 'correct' : 'wrong';
-        setRevealOutcome(outcome);
-        playUiSound(outcome === 'correct' ? 'lock' : 'wrong');
-        await waitForBeat(SCORE_PROJECTILE_SETTLE_MS, controller.signal);
-        setSettledRevealPlayers((current) => new Set(current).add(playerId));
-        await waitForBeat(650, controller.signal);
+        if (result?.correct) {
+          pendingCorrectPlayerIds.push(playerId);
+          continue;
+        }
+        await settlePlayer(playerId, 'wrong');
+      }
+      for (const playerId of pendingCorrectPlayerIds.splice(0)) {
+        await settlePlayer(playerId, 'correct');
       }
       setActiveRevealPlayerId(null);
       setRevealOutcome('neutral');
@@ -1028,6 +1078,7 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
         : (snapshot.reveal?.playerResults ?? []).filter(
             (result) => result.answerId === activeReactionAnswerId,
           );
+  const revealingCorrectAnswer = activePart === 'correct-answer' || activePart === 'explanation';
   const activeReactionNames = activeReactionResults
     .map(
       (result) =>
@@ -1398,6 +1449,10 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
 
         {snapshot.phase === 'reveal' && snapshot.reveal && (
           <div className="reveal-stage">
+            <div className="reveal-stage__question">
+              <span>{snapshot.reveal.category}</span>
+              <h1>{snapshot.reveal.promptText}</h1>
+            </div>
             <div
               className={`reveal-player-arena is-${revealOutcome} ${
                 activeRevealPlayerId ? 'has-player' : 'is-wrap-up'
@@ -1419,10 +1474,11 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                   const Icon = direction.icon;
                   const selected =
                     activeRevealResult?.answerId === answer.id ||
-                    activeReactionAnswerId === answer.id;
+                    activeReactionAnswerId === answer.id ||
+                    (revealingCorrectAnswer && snapshot.reveal?.correctAnswerId === answer.id);
                   const verdictClass =
-                    selected && revealOutcome !== 'neutral'
-                      ? activeRevealResult?.correct
+                    selected && (revealOutcome !== 'neutral' || revealingCorrectAnswer)
+                      ? revealingCorrectAnswer || activeRevealResult?.correct
                         ? 'is-correct'
                         : 'is-wrong'
                       : '';

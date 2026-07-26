@@ -237,10 +237,10 @@ export const demoPack: Showpack = {
               ],
             },
             [
-              'The answer is the fourteen-line rhyme scheme, because even Shakespeare knew when to stop scrolling.',
+              'A Shakespearean sonnet uses fourteen lines, arranged as three quatrains and a final couplet.',
             ],
             [
-              'A Shakespearean sonnet traditionally uses fourteen lines of iambic pentameter: three quatrains followed by a rhyming couplet.',
+              'Its usual rhyme scheme is A B A B, C D C D, E F E F, then G G. Even Shakespeare knew when to stop scrolling.',
             ],
             [
               'I asked Legal to write a sonnet about informed consent.',
@@ -274,9 +274,11 @@ export const demoPack: Showpack = {
                 "These soldiers are not searching your house. They've found it, connected to the Wi-Fi, and changed the television input. Different emergency.",
               ],
             },
-            ['The Third Amendment. Tonight, the constitutional benchwarmer gets the save.'],
             [
-              'The Third Amendment bars soldiers from being quartered in private homes during peacetime without the owner consenting.',
+              'The Third Amendment says soldiers cannot be quartered in your private home during peacetime without your consent.',
+            ],
+            [
+              'That suspiciously specific protection gives the constitutional benchwarmer tonight’s save, just before somebody unfolds a government-issued sleeping bag on your couch.',
             ],
             [
               'The Third Amendment rarely gets invited anywhere.',
@@ -311,10 +313,10 @@ export const demoPack: Showpack = {
               ],
             },
             [
-              'Twenty-two minutes, one way. Every rage quit becomes a carefully considered resignation.',
+              'At their widest separation, a radio signal can spend about twenty-two minutes traveling from Earth to Mars—one way.',
             ],
             [
-              'Depending on their positions, one-way radio travel between Earth and Mars ranges from roughly three to twenty-two minutes.',
+              'The exact delay changes with the planets, from roughly three to twenty-two minutes. Every rage quit becomes a carefully considered resignation.',
             ],
             [
               'Imagine trash talk with a forty-four-minute round trip.',
@@ -349,10 +351,10 @@ export const demoPack: Showpack = {
               ],
             },
             [
-              'More surviving offspring. Nature tracks engagement with a deeply unsettling definition of engagement.',
+              'Natural selection keeps the heritable traits whose bearers leave more surviving offspring.',
             ],
             [
-              'A heritable trait tends to spread through natural selection when its bearers leave more surviving offspring than others.',
+              'Those traits become more common in later generations. Nature tracks engagement with a deeply unsettling definition of engagement.',
             ],
             [
               'Our intern stands beside the copier six hours a day because he believes his children will come out collated.',
@@ -386,11 +388,9 @@ export const demoPack: Showpack = {
                 'Partial destruction does not earn partial credit.',
               ],
             },
+            ['Gold packs about nineteen thousand three hundred kilograms into every cubic meter.'],
             [
-              'Nineteen point three metric tons. Steve is not strong; his inventory is committing workers compensation fraud.',
-            ],
-            [
-              'Gold has a density of about 19,300 kilograms per cubic meter, so a one-meter cube has a mass near 19.3 metric tons.',
+              "So Steve's one-meter block comes to roughly nineteen point three metric tons. He is not strong; his inventory is committing workers compensation fraud.",
             ],
             [
               "A Minecraft gold block should weigh roughly as much as three adult elephants, assuming the elephants haven't been compressed into convenient crafting materials.",

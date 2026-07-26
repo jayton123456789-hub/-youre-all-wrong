@@ -462,11 +462,99 @@ class QwenVoiceWorkerTests(unittest.TestCase):
             )
 
     def test_transcript_qa_keeps_proper_noun_pronunciation_strict(self) -> None:
-        with self.assertRaisesRegex(WORKER.VoiceQualityReject, "first word"):
+        with self.assertRaisesRegex(
+            WORKER.TranscriptQualityReject, "first word"
+        ) as caught:
             WORKER.transcript_qa(
                 "Minecraft: the heavy update.",
                 "Minicraft: the heavy update.",
                 self.policy.maximum_word_error_rate,
+            )
+        self.assertTrue(caught.exception.fallback_eligible)
+
+    def test_render_accepts_best_safe_take_after_seven_transcript_only_failures(
+        self,
+    ) -> None:
+        generation_calls: list[object] = []
+
+        class FakeModel:
+            def create_voice_clone_prompt(self, **_kwargs: object) -> str:
+                return "approved-voice-prompt"
+
+            def generate_voice_clone(
+                self, *, text: object, **_kwargs: object
+            ) -> tuple[list[np.ndarray], int]:
+                generation_calls.append(text)
+                texts = text if isinstance(text, list) else [text]
+                return [
+                    np.full(12_000, 0.2, dtype=np.float32)
+                    for _ in texts
+                ], 10_000
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, contract, first_output, second_output = (
+                self.make_two_cue_render_fixture(root)
+            )
+            manifest["jobs"][1]["text"] = "Minecraft is a sandbox game."
+            manifest["jobs"][1]["qaTranscript"] = "Minecraft is a sandbox game."
+            events: list[dict[str, object]] = []
+
+            def transcribe(path: Path) -> str:
+                return (
+                    "Welcome one."
+                    if path.name.startswith(".first.")
+                    else "Minicraft is a sandbox game."
+                )
+
+            with (
+                mock.patch.object(
+                    WORKER, "load_qwen_model", return_value=FakeModel()
+                ),
+                mock.patch.object(
+                    WORKER,
+                    "load_render_transcriber",
+                    return_value=(transcribe, "cpu"),
+                ),
+                mock.patch.object(
+                    WORKER, "preferred_render_batch_size", return_value=2
+                ),
+                mock.patch.object(WORKER, "seed_everything"),
+                mock.patch.object(WORKER, "collect_released_models"),
+                mock.patch.object(WORKER, "emit", side_effect=events.append),
+            ):
+                WORKER.render_episode(
+                    manifest,
+                    contract,
+                    self.policy,
+                    np,
+                    sf,
+                    object(),
+                )
+
+            self.assertTrue(first_output.is_file())
+            self.assertTrue(second_output.is_file())
+            self.assertEqual(
+                len(generation_calls),
+                WORKER.FALLBACK_ACCEPTANCE_ATTEMPT,
+            )
+            report = json.loads(
+                (root / "qa-report.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(report["status"], "passed-with-warnings")
+            second_report = next(
+                job for job in report["jobs"] if job["cueId"] == "second"
+            )
+            self.assertEqual(
+                second_report["qualityStatus"], "accepted-with-warning"
+            )
+            self.assertIn(
+                "offline transcript QA remained uncertain",
+                second_report["qualityWarning"],
+            )
+            self.assertEqual(
+                report["rescue"]["acceptedWithWarningCount"],
+                1,
             )
 
     def test_waveform_qa_rejects_nonzero_leading_guard(self) -> None:

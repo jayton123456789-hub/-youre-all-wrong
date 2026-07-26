@@ -246,8 +246,11 @@ function revealPresentationParts(
 
   parts.push({
     id: 'explanation',
-    cues: [...question.explanation, ...question.postQuestion],
+    cues: question.explanation,
   });
+  if (question.postQuestion.length > 0) {
+    parts.push({ id: 'post-question', cues: question.postQuestion });
+  }
   const pointer = state.currentQuestion;
   const round = pointer ? pack.episode.rounds[pointer.roundIndex] : undefined;
   if (
@@ -387,6 +390,8 @@ export function projectGame(
     state.phase === 'reveal' && state.reveal
       ? {
           questionId: state.reveal.questionId,
+          category: question?.category ?? '',
+          promptText: question?.promptText ?? '',
           correctAnswerId: state.reveal.correctAnswerId,
           correctAnswerText:
             question?.answers.find((answer) => answer.id === state.reveal?.correctAnswerId)?.text ??

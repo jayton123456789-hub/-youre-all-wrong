@@ -87,7 +87,9 @@ three jokes after every fact.
 - Every answer has a stable unique ID.
 - Every wrong answer has its own complete, independent reaction. It must make sense even
   if no other answer reaction was heard.
-- The correct reaction identifies the answer without merely saying "correct."
+- The correct reaction is evidence-led: it begins with the decisive fact and lets players
+  infer the result before or while it naturally identifies the answer. Never use a blunt
+  "Player one, you're correct" or generic congratulations.
 - The explanation accurately teaches the fact.
 - A no-answer reaction always exists.
 - Optional conditional reactions only use the typed conditions allowed by the schema.
@@ -106,8 +108,10 @@ three jokes after every fact.
 5. Answers appear when answer narration starts; the twenty-second clock begins.
 6. A player's early lock may interrupt answer narration.
 7. When everyone locks or time expires, selected answer groups are revealed.
-8. The host performs the chosen reaction, then the game applies the score animation.
-9. Correct answer, explanation, and optional post-question material complete the beat.
+8. Wrong branches land before their damage animation. The correct branch begins its
+   evidence-led reveal while the selected answer remains pending.
+9. The correct explanation lands, then the bubble turns green and its score pays out.
+   Optional post-question material completes the beat.
 
 Do not write narration that assumes answer choices are still hidden after they appear.
 Do not write a reaction that depends on an earlier wrong reaction being selected.

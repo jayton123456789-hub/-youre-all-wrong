@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "resources": {
-    "qwen-voice-worker.py": "6997881fc1b8a49cb11088068934e03b1279b5d9746b91f8f8d086d8b8844899",
+    "qwen-voice-worker.py": "f8c41311e4e818f85183e6eec417305238081a0fcf4da1aac7f3bc00af88c15b",
     "setup-qwen-tts.ps1": "e3d1eebb29ca7aad5ca0b6792ce82c23080f0526ba5ee29598764e8e2364d1e4",
     "qwen-runtime-manifest.json": "779aef0482c500bd8e178e35b1be5a01d8ec710eb22c841daa0cd78a9456e60f"
   },

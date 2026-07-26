@@ -1710,6 +1710,393 @@ button {
   }
 }
 
+/* Final cascade: keep gameplay spatially continuous from question through reveal. */
+.host .prompt-slate {
+  width: min(74rem, 88vw);
+  min-height: min(27rem, 58vh);
+  padding-inline: clamp(0.5rem, 2vw, 1.5rem);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.host .prompt-slate h1 {
+  max-width: 26ch;
+  justify-self: center;
+  text-align: center;
+}
+
+.host .answer-stage {
+  width: min(78rem, 91vw);
+  grid-template-rows: auto minmax(18rem, 1fr) auto;
+  gap: clamp(0.7rem, 1.7vh, 1.3rem);
+}
+
+.host .answer-stage__header {
+  width: min(66rem, 88%);
+  justify-self: center;
+  align-items: center;
+}
+
+.host .answer-stage__header > div > span,
+.host .answer-stage__header h1 {
+  display: block;
+  text-align: center;
+}
+
+.host .answer-stage__header h1 {
+  max-width: 62rem;
+  font-size: clamp(1.05rem, 1.6vw, 1.55rem);
+}
+
+.host .answer-compass {
+  width: min(66rem, 94%);
+  justify-self: center;
+  gap: 0.4rem clamp(1.6rem, 4vw, 4.6rem);
+}
+
+.host .answer-choice {
+  gap: 0.8rem;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.host .answer-choice p {
+  color: var(--ink);
+  font-size: clamp(0.88rem, 1.2vw, 1.2rem);
+  font-weight: 760;
+  line-height: 1.12;
+  text-shadow: 0 0.12rem 0.6rem rgb(0 0 0 / 90%);
+}
+
+.host .narration-chip {
+  border: 0;
+  background: transparent;
+}
+
+.host .reveal-stage {
+  display: grid;
+  width: min(78rem, 91vw);
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(15rem, 1fr) auto auto;
+  gap: clamp(0.45rem, 1vh, 0.8rem);
+}
+
+.host .reveal-stage__question {
+  text-align: center;
+}
+
+.host .reveal-stage__question > span {
+  color: var(--cyan);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.host .reveal-stage__question h1 {
+  max-width: 64rem;
+  margin: 0.18rem auto 0;
+  font-size: clamp(0.9rem, 1.35vw, 1.22rem);
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.host .reveal-player-arena {
+  width: min(66rem, 94%);
+  justify-self: center;
+}
+
+.host .reveal-compass {
+  min-height: clamp(14rem, 34vh, 21rem);
+  gap: 0.35rem clamp(1.2rem, 3vw, 3.3rem);
+}
+
+.host .reveal-choice {
+  gap: 0.5rem;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.host .reveal-choice > span {
+  font-size: clamp(0.68rem, 0.92vw, 0.9rem);
+  text-shadow: 0 0.12rem 0.55rem rgb(0 0 0 / 90%);
+}
+
+.host .reveal-choice.is-selected {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--orange);
+  border-radius: 0.28rem;
+}
+
+.host .reveal-choice.is-selected.is-correct,
+.host .reveal-choice.is-selected.is-wrong {
+  border: 2px solid rgb(255 255 255 / 84%);
+}
+
+.host .reveal-stage__broadcast {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.host .reveal-stage__broadcast .stage-caption {
+  min-height: 0;
+}
+
+.host .reveal-stage__broadcast .stage-caption p {
+  min-height: 0;
+  margin-block: 0.35rem;
+}
+
+.host .verdict-stamp {
+  display: grid;
+  min-width: 11rem;
+  place-items: center;
+}
+
+.host .reveal-stage > .scoreboard {
+  grid-column: 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Measured broadcast composition                                             */
+/* -------------------------------------------------------------------------- */
+
+.prompt-slate {
+  width: min(74rem, 88vw);
+  min-height: min(27rem, 58vh);
+  padding-inline: clamp(0.5rem, 2vw, 1.5rem);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.prompt-slate::before,
+.prompt-slate::after {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--hot), var(--purple), transparent);
+  box-shadow: 0 0 1.4rem var(--purple);
+  content: '';
+}
+
+.prompt-slate h1 {
+  max-width: 26ch;
+  justify-self: center;
+  text-align: center;
+}
+
+.answer-stage {
+  width: min(78rem, 91vw);
+  grid-template-rows: auto minmax(18rem, 1fr) auto;
+  gap: clamp(0.7rem, 1.7vh, 1.3rem);
+}
+
+.answer-stage__header {
+  width: min(66rem, 88%);
+  justify-self: center;
+  align-items: center;
+}
+
+.answer-stage__header h1 {
+  max-width: 62rem;
+  font-size: clamp(1.05rem, 1.6vw, 1.55rem);
+  text-align: center;
+}
+
+.answer-stage__header > div > span {
+  display: block;
+  text-align: center;
+}
+
+.answer-compass {
+  width: min(66rem, 94%);
+  justify-self: center;
+  gap: 0.4rem clamp(1.6rem, 4vw, 4.6rem);
+}
+
+.answer-compass__cross {
+  inset: 8% 31%;
+  opacity: 0.34;
+}
+
+.answer-compass__cross i {
+  background: linear-gradient(transparent, var(--purple), var(--cyan), transparent);
+  filter: blur(0.5px);
+}
+
+.answer-choice {
+  gap: 0.8rem;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.answer-choice::after {
+  position: absolute;
+  right: 0;
+  bottom: 0.12rem;
+  left: clamp(2.9rem, 4vw, 3.8rem);
+  height: 1px;
+  background: linear-gradient(90deg, var(--choice-accent), transparent);
+  content: '';
+  opacity: 0.5;
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: answer-rule-in 380ms 280ms forwards;
+}
+
+@keyframes answer-rule-in {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.answer-choice > span {
+  border: 2px solid rgb(255 255 255 / 80%);
+  border-radius: 0.18rem;
+  box-shadow:
+    0.14rem 0.14rem 0 rgb(0 0 0 / 65%),
+    0 0 1.2rem color-mix(in srgb, var(--choice-accent) 35%, transparent);
+  transform: rotate(-2deg);
+}
+
+.answer-choice p {
+  color: var(--ink);
+  font-size: clamp(0.88rem, 1.2vw, 1.2rem);
+  font-weight: 760;
+  line-height: 1.12;
+  text-shadow: 0 0.12rem 0.6rem rgb(0 0 0 / 90%);
+}
+
+.narration-chip {
+  border: 0;
+  background: transparent;
+}
+
+.reveal-stage {
+  display: grid;
+  width: min(78rem, 91vw);
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(15rem, 1fr) auto auto;
+  gap: clamp(0.45rem, 1vh, 0.8rem);
+}
+
+.reveal-stage__question {
+  text-align: center;
+}
+
+.reveal-stage__question > span {
+  color: var(--cyan);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.reveal-stage__question h1 {
+  max-width: 64rem;
+  margin: 0.18rem auto 0;
+  font-size: clamp(0.9rem, 1.35vw, 1.22rem);
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.reveal-player-arena {
+  width: min(66rem, 94%);
+  justify-self: center;
+}
+
+.reveal-compass {
+  min-height: clamp(14rem, 34vh, 21rem);
+  gap: 0.35rem clamp(1.2rem, 3vw, 3.3rem);
+}
+
+.reveal-compass::before,
+.reveal-compass::after {
+  border-radius: 0;
+  background: linear-gradient(transparent, rgb(140 82 255 / 28%), transparent);
+}
+
+.reveal-compass::before {
+  inset: 3% 49.8%;
+}
+
+.reveal-compass::after {
+  inset: 49.8% 3%;
+  background: linear-gradient(90deg, transparent, rgb(56 233 255 / 25%), transparent);
+}
+
+.reveal-choice {
+  gap: 0.5rem;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.reveal-choice > span {
+  font-size: clamp(0.68rem, 0.92vw, 0.9rem);
+  text-shadow: 0 0.12rem 0.55rem rgb(0 0 0 / 90%);
+}
+
+.reveal-choice.is-selected {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--orange);
+  border-radius: 0.28rem;
+}
+
+.reveal-choice.is-selected.is-correct,
+.reveal-choice.is-selected.is-wrong {
+  border: 2px solid rgb(255 255 255 / 84%);
+}
+
+.reveal-stage__broadcast {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.reveal-stage__broadcast .stage-caption {
+  min-height: 0;
+}
+
+.reveal-stage__broadcast .stage-caption p {
+  min-height: 0;
+  margin-block: 0.35rem;
+}
+
+.verdict-stamp {
+  display: grid;
+  min-width: 11rem;
+  place-items: center;
+}
+
+.reveal-stage > .scoreboard {
+  grid-column: 1;
+}
+
+@media (max-height: 760px) and (min-width: 900px) {
+  .answer-stage {
+    grid-template-rows: auto minmax(13rem, 1fr) auto;
+  }
+
+  .reveal-stage {
+    grid-template-rows: auto minmax(12rem, 1fr) auto auto;
+  }
+
+  .reveal-compass {
+    min-height: 12rem;
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Broadcast direction pass                                                   */
 /* -------------------------------------------------------------------------- */
@@ -4428,4 +4815,158 @@ button {
   .controller-wait__signal i {
     animation: none !important;
   }
+}
+
+/* The reference layout keeps one top-to-bottom stage instead of swapping pages. */
+.host .prompt-slate {
+  width: min(74rem, 88vw);
+  min-height: min(27rem, 58vh);
+  padding-inline: clamp(0.5rem, 2vw, 1.5rem);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.host .prompt-slate h1 {
+  max-width: 26ch;
+  justify-self: center;
+  text-align: center;
+}
+
+.host .answer-stage {
+  width: min(78rem, 91vw);
+  grid-template-rows: auto minmax(18rem, 1fr) auto;
+  gap: clamp(0.7rem, 1.7vh, 1.3rem);
+}
+
+.host .answer-stage__header {
+  width: min(66rem, 88%);
+  justify-self: center;
+  align-items: center;
+}
+
+.host .answer-stage__header > div > span,
+.host .answer-stage__header h1 {
+  display: block;
+  text-align: center;
+}
+
+.host .answer-stage__header h1 {
+  max-width: 62rem;
+  font-size: clamp(1.05rem, 1.6vw, 1.55rem);
+}
+
+.host .answer-compass {
+  width: min(66rem, 94%);
+  justify-self: center;
+  gap: 0.4rem clamp(1.6rem, 4vw, 4.6rem);
+}
+
+.host .answer-choice {
+  gap: 0.8rem;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.host .answer-choice p {
+  color: var(--ink);
+  font-size: clamp(0.88rem, 1.2vw, 1.2rem);
+  font-weight: 760;
+  line-height: 1.12;
+  text-shadow: 0 0.12rem 0.6rem rgb(0 0 0 / 90%);
+}
+
+.host .narration-chip {
+  border: 0;
+  background: transparent;
+}
+
+.host .reveal-stage {
+  display: grid;
+  width: min(78rem, 91vw);
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(15rem, 1fr) auto auto;
+  gap: clamp(0.45rem, 1vh, 0.8rem);
+}
+
+.host .reveal-stage__question {
+  text-align: center;
+}
+
+.host .reveal-stage__question > span {
+  color: var(--cyan);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.host .reveal-stage__question h1 {
+  max-width: 64rem;
+  margin: 0.18rem auto 0;
+  font-size: clamp(0.9rem, 1.35vw, 1.22rem);
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.host .reveal-player-arena {
+  width: min(66rem, 94%);
+  justify-self: center;
+}
+
+.host .reveal-compass {
+  min-height: clamp(14rem, 34vh, 21rem);
+  gap: 0.35rem clamp(1.2rem, 3vw, 3.3rem);
+}
+
+.host .reveal-choice {
+  gap: 0.5rem;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.host .reveal-choice > span {
+  font-size: clamp(0.68rem, 0.92vw, 0.9rem);
+  text-shadow: 0 0.12rem 0.55rem rgb(0 0 0 / 90%);
+}
+
+.host .reveal-choice.is-selected {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--orange);
+  border-radius: 0.28rem;
+}
+
+.host .reveal-choice.is-selected.is-correct,
+.host .reveal-choice.is-selected.is-wrong {
+  border: 2px solid rgb(255 255 255 / 84%);
+}
+
+.host .reveal-stage__broadcast {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.host .reveal-stage__broadcast .stage-caption {
+  min-height: 0;
+}
+
+.host .reveal-stage__broadcast .stage-caption p {
+  min-height: 0;
+  margin-block: 0.35rem;
+}
+
+.host .verdict-stamp {
+  display: grid;
+  min-width: 11rem;
+  place-items: center;
+}
+
+.host .reveal-stage > .scoreboard {
+  grid-column: 1;
 }

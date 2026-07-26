@@ -23,6 +23,8 @@ export interface VoicePlaybackCallbacks {
   signal?: AbortSignal;
   muted?: boolean;
   volume?: number;
+  playbackRate?: number;
+  pauseScale?: number;
   onCue?: (cue: Cue | null) => void;
 }
 
@@ -200,7 +202,14 @@ export class VoiceBank {
 
   async playSequence(
     cues: CueSequence,
-    { signal, muted = false, volume = 1, onCue }: VoicePlaybackCallbacks = {},
+    {
+      signal,
+      muted = false,
+      volume = 1,
+      playbackRate = 1,
+      pauseScale = 1,
+      onCue,
+    }: VoicePlaybackCallbacks = {},
   ): Promise<void> {
     if (this.#disposed) throw new Error('The voice bank has already been disposed.');
     const sequenceSounds = new Set<string>();
@@ -231,14 +240,14 @@ export class VoiceBank {
 
         const loaded = this.#assets.get(cue.id);
         if (!loaded) throw new Error(`The pre-cooked voice clip "${cue.id}" is missing.`);
-        await waitFor(loaded.manifest.pauseBeforeMs, signal);
+        await waitFor(loaded.manifest.pauseBeforeMs * pauseScale, signal);
         onCue?.(cue);
         if (muted || this.#muted) {
-          await waitFor(loaded.manifest.durationMs, signal);
+          await waitFor(loaded.manifest.durationMs / playbackRate, signal);
         } else {
-          await this.#playAsset(loaded, Math.max(0, Math.min(1, volume)), signal);
+          await this.#playAsset(loaded, Math.max(0, Math.min(1, volume)), playbackRate, signal);
         }
-        await waitFor(loaded.manifest.pauseAfterMs, signal);
+        await waitFor(loaded.manifest.pauseAfterMs * pauseScale, signal);
       }
       onCue?.(null);
     } catch (error) {
@@ -406,11 +415,18 @@ export class VoiceBank {
     await completion;
   }
 
-  async #playAsset(asset: LoadedVoiceAsset, volume: number, signal?: AbortSignal): Promise<void> {
+  async #playAsset(
+    asset: LoadedVoiceAsset,
+    volume: number,
+    playbackRate: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
     if (signal?.aborted) throw abortError();
     const audio = new Audio(asset.objectUrl);
     audio.preload = 'auto';
     audio.volume = volume;
+    audio.playbackRate = Math.max(0.75, Math.min(1.25, playbackRate));
+    audio.preservesPitch = true;
     audio.muted = this.#muted;
     this.#activeAudio = audio;
 
