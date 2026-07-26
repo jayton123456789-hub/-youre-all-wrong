@@ -66,6 +66,7 @@ import {
 } from './runtime.js';
 import { playUiSound } from './sound.js';
 import { useEpisodeVoice } from './useEpisodeVoice.js';
+import { usePrivateSoundtrack } from './private-soundtrack.js';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type HostAction =
@@ -750,6 +751,7 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
   const attachEpoch = useRef(0);
   const snapshotRef = useRef<GameSnapshot | null>(null);
   const completedSequences = useRef(new Set<string>());
+  usePrivateSoundtrack(secrets.runtimeOrigin, secrets.hostSecret, snapshot?.phase, muted);
 
   useEffect(() => {
     snapshotRef.current = snapshot;

@@ -104,6 +104,9 @@ async function run(): Promise<void> {
     ...(process.env.YAW_JOIN_SECRET ? { joinSecret: process.env.YAW_JOIN_SECRET } : {}),
     voice,
     ...(showpackAssets ? { showpackAssets } : {}),
+    ...(process.env.YAW_PRIVATE_MUSIC_PATH
+      ? { privateMusicDirectory: resolve(process.env.YAW_PRIVATE_MUSIC_PATH) }
+      : {}),
   });
   const started = await server.start();
 

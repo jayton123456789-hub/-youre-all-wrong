@@ -1,6 +1,6 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
-import { extname, resolve } from 'node:path';
+import { basename, extname, join, resolve } from 'node:path';
 
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -63,6 +63,7 @@ export interface GameServerOptions {
   logger?: boolean;
   voice?: VoicePreflightService;
   showpackAssets?: ShowpackAssetLibrary;
+  privateMusicDirectory?: string;
 }
 
 export interface StartedGameServer {
@@ -230,6 +231,43 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     sessionPhase: runtime.state.phase,
     revision: runtime.state.revision,
   }));
+
+  app.get('/api/private-music', async (request, reply) => {
+    const suppliedKey = request.headers['x-yaw-host-key'];
+    const key = Array.isArray(suppliedKey) ? (suppliedKey[0] ?? '') : (suppliedKey ?? '');
+    if (!runtime.verifyHostSecret(key)) {
+      return reply.code(403).send({ message: 'Host authorization required.' });
+    }
+    const directory = options.privateMusicDirectory;
+    if (!directory || !existsSync(directory)) return { tracks: [] };
+    return {
+      tracks: readdirSync(directory)
+        .filter((name) => extname(name).toLowerCase() === '.mp3')
+        .sort()
+        .map((name) => ({
+          name,
+          url: `/api/private-music/${encodeURIComponent(name)}`,
+        })),
+    };
+  });
+
+  app.get<{ Params: { name: string } }>('/api/private-music/:name', async (request, reply) => {
+    const suppliedKey = request.headers['x-yaw-host-key'];
+    const key = Array.isArray(suppliedKey) ? (suppliedKey[0] ?? '') : (suppliedKey ?? '');
+    if (!runtime.verifyHostSecret(key)) {
+      return reply.code(403).send({ message: 'Host authorization required.' });
+    }
+    const directory = options.privateMusicDirectory;
+    const name = basename(decodeURIComponent(request.params.name));
+    if (!directory || extname(name).toLowerCase() !== '.mp3') {
+      return reply.code(404).send({ message: 'Track not found.' });
+    }
+    const path = join(directory, name);
+    if (!existsSync(path)) return reply.code(404).send({ message: 'Track not found.' });
+    reply.header('Cache-Control', 'private, max-age=3600');
+    reply.type('audio/mpeg');
+    return reply.send(createReadStream(path));
+  });
 
   app.get('/api/runtime', async () => ({
     protocolVersion: PROTOCOL_VERSION,

@@ -195,6 +195,7 @@ function startRuntime(window: BrowserWindow): void {
       YAW_SHOWPACK_PATH: activeEpisode.packPath ?? '',
       YAW_SHOWPACK_ASSET_ROOT: activeEpisode.assetRoot ?? '',
       YAW_SHOWPACK_ARCHIVE_PATH: activeEpisode.archivePath ?? '',
+      YAW_PRIVATE_MUSIC_PATH: join(app.getPath('userData'), 'private-music', 'ydkj2011'),
       ...(isDevelopment
         ? { YAW_PUBLIC_WEB_PORT: new URL(process.env.YAW_DEV_WEB_URL!).port || '5173' }
         : { YAW_WEB_ROOT: webRoot }),
