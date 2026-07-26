@@ -318,9 +318,23 @@ function LoadingStage({ message }: { message: string }) {
     <main className="loading-stage">
       <div className="signal-field" aria-hidden="true" />
       <Brand />
-      <div className="loading-stage__meter">
-        <CircleNotch className="spinner" weight="bold" />
+      <div className="loading-stage__console">
+        <div className="loading-stage__status">
+          <Waveform weight="bold" />
+          <span>BOOTING SHOW CONTROL</span>
+        </div>
+        <div className="loading-stage__meter">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
         <p>{message}</p>
+        <div className="loading-stage__subline">
+          <CircleNotch className="spinner" weight="bold" />
+          <span>Checking room, voice cache, and local network</span>
+        </div>
       </div>
     </main>
   );

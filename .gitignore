@@ -6,6 +6,7 @@ coverage/
 .vite/
 .cache/
 *.log
+*.bak
 *.tsbuildinfo
 
 # Local runtime data and generated voice

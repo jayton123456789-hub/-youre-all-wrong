@@ -4125,21 +4125,118 @@ button {
 }
 
 .loading-stage {
-  gap: 1.2rem;
+  position: relative;
+  gap: 1.4rem;
+  overflow: hidden;
+}
+
+.loading-stage .brand {
+  transform: rotate(-2deg);
+  filter: drop-shadow(0.22rem 0.22rem 0 var(--purple));
+}
+
+.loading-stage__console {
+  position: relative;
+  display: grid;
+  width: min(34rem, 86vw);
+  gap: 0.85rem;
+  padding: 1.2rem 1.35rem;
+  overflow: hidden;
+  border: 1px solid rgb(56 233 255 / 28%);
+  border-left: 0.35rem solid var(--hot);
+  border-radius: 0.45rem;
+  background:
+    linear-gradient(100deg, rgb(9 7 20 / 92%), rgb(29 12 42 / 74%)),
+    repeating-linear-gradient(90deg, transparent 0 4rem, rgb(255 255 255 / 3%) 4rem 4.06rem);
+  box-shadow:
+    0.45rem 0.45rem 0 rgb(140 82 255 / 44%),
+    0 0 3rem rgb(56 233 255 / 10%);
+}
+
+.loading-stage__console::before {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(56 233 255 / 12%), transparent);
+  content: '';
+  transform: translateX(-120%);
+  animation: loading-scan 1.9s ease-in-out infinite;
+}
+
+@keyframes loading-scan {
+  70%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+.loading-stage__status,
+.loading-stage__subline {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--acid);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.loading-stage__status svg,
+.loading-stage__subline svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  color: var(--hot);
 }
 
 .loading-stage__meter {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.7rem 1rem;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 0.8rem;
-  background: rgb(8 6 14 / 68%);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem;
 }
 
-.loading-stage__meter p {
+.loading-stage__meter i {
+  height: 0.45rem;
+  background: linear-gradient(90deg, var(--purple), var(--cyan), var(--acid));
+  box-shadow: 0 0 0.8rem rgb(56 233 255 / 32%);
+  transform: skewX(-22deg) scaleX(0.25);
+  transform-origin: left;
+  animation: loading-bar 900ms ease-in-out infinite alternate;
+}
+
+.loading-stage__meter i:nth-child(2) {
+  animation-delay: 80ms;
+}
+
+.loading-stage__meter i:nth-child(3) {
+  animation-delay: 160ms;
+}
+
+.loading-stage__meter i:nth-child(4) {
+  animation-delay: 240ms;
+}
+
+.loading-stage__meter i:nth-child(5) {
+  animation-delay: 320ms;
+}
+
+@keyframes loading-bar {
+  to {
+    transform: skewX(-22deg) scaleX(1);
+  }
+}
+
+.loading-stage__console p {
   margin: 0;
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.loading-stage__subline {
+  color: rgb(255 248 231 / 54%);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
 }
 
 /* Phone direction controller ------------------------------------------------ */
