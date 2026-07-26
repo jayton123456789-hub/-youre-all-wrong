@@ -15,6 +15,7 @@ import {
 
 import { buildEpisodeAuthorKitArchive, EPISODE_AUTHOR_KIT_FILENAME } from './episode-author-kit.js';
 import type { DesktopAuthorKitResult, DesktopEpisodeActionResult } from './episode-contract.js';
+import { migrateVerifiedLegacyVoiceCache } from './legacy-voice-cache.js';
 import { runQwenRuntimeProbe } from './qwen-runtime.js';
 import {
   clearActiveEpisode,
@@ -664,7 +665,17 @@ app.whenReady().then(async () => {
   });
   session.defaultSession.setPermissionCheckHandler(() => false);
 
-  activeEpisode = await loadActiveEpisode(app.getPath('userData'));
+  const userDataDirectory = app.getPath('userData');
+  const legacyVoiceCache = join(app.getPath('appData'), 'Electron', 'voice-cache');
+  const migratedCache = await migrateVerifiedLegacyVoiceCache(
+    legacyVoiceCache,
+    join(userDataDirectory, 'voice-cache'),
+  ).catch(() => null);
+  if (migratedCache?.imported) {
+    console.log(`Imported ${migratedCache.imported} verified legacy voice-cache entries.`);
+  }
+
+  activeEpisode = await loadActiveEpisode(userDataDirectory);
   activeVoice = await resolveDesktopVoice(desktopVoiceResolveOptions());
   registerEpisodeIpc();
   registerVoiceIpc();

@@ -24,6 +24,7 @@ import {
   Waveform,
   WifiHigh,
   WifiSlash,
+  Wrench,
   X,
 } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -44,6 +45,10 @@ import { EPISODE_AI_STARTER_PROMPT } from '../domain/showpack/author-prompt.js';
 import type { VoicePreflightActivity } from '../domain/voice/preflight.js';
 import type { GameSnapshot, HostPresentation } from '../domain/game/types.js';
 import type { DesktopEpisodeState } from '../desktop/episode-contract.js';
+import type {
+  DesktopVoiceBootstrapState,
+  VoiceInstallationProgress,
+} from '../desktop/voice-installation.js';
 import type {
   AttachSuccess,
   ClientToServerEvents,
@@ -373,15 +378,18 @@ export function voiceActivityPresentation(activity: VoicePreflightActivity | nul
 }
 
 function VoicePreflightPanel({
-  phase,
-  completed,
-  total,
-  rendered,
-  cached,
-  voiceName,
-  message,
-  activity,
-}: ReturnType<typeof useEpisodeVoice>['progress']) {
+  progress: { phase, completed, total, rendered, cached, voiceName, message, activity },
+  installationState,
+  installationProgress,
+  installationBusy,
+  onInstall,
+}: {
+  progress: ReturnType<typeof useEpisodeVoice>['progress'];
+  installationState: DesktopVoiceBootstrapState | null;
+  installationProgress: VoiceInstallationProgress | null;
+  installationBusy: boolean;
+  onInstall: () => void;
+}) {
   const progress = total > 0 ? completed / total : 0;
   const ready = phase === 'ready';
   const failed = phase === 'error';
@@ -389,6 +397,10 @@ function VoicePreflightPanel({
   const retrying = activityPresentation.mode === 'retry';
   const rescuing = activityPresentation.mode === 'rescue';
   const recovered = activityPresentation.recovered;
+  const canInstall =
+    failed &&
+    (installationState?.state === 'installable' || installationState?.state === 'repairable');
+  const displayedMessage = installationProgress?.message ?? message;
   return (
     <aside
       className={`voice-preflight ${ready ? 'is-ready' : ''} ${failed ? 'is-error' : ''} ${
@@ -427,7 +439,24 @@ function VoicePreflightPanel({
       <div className="voice-preflight__track">
         <i style={{ width: `${Math.round(progress * 100)}%` }} />
       </div>
-      <p>{message}</p>
+      <p>{displayedMessage}</p>
+      {canInstall && (
+        <div className="voice-preflight__repair">
+          <span>One-time local setup may download several gigabytes.</span>
+          <button type="button" disabled={installationBusy} onClick={onInstall}>
+            {installationBusy ? (
+              <CircleNotch className="spinner" weight="bold" />
+            ) : (
+              <Wrench weight="bold" />
+            )}
+            {installationBusy
+              ? 'INSTALLING HOST…'
+              : installationState.state === 'repairable'
+                ? 'REPAIR HOST'
+                : 'INSTALL HOST'}
+          </button>
+        </div>
+      )}
       {ready && (
         <div className="voice-preflight__facts">
           <span>{rendered} fresh</span>
@@ -713,6 +742,11 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
   const [authorKitBusy, setAuthorKitBusy] = useState(false);
   const [authorKitNotice, setAuthorKitNotice] = useState<string | null>(null);
   const [authorKitError, setAuthorKitError] = useState<string | null>(null);
+  const [voiceInstallationState, setVoiceInstallationState] =
+    useState<DesktopVoiceBootstrapState | null>(null);
+  const [voiceInstallationProgress, setVoiceInstallationProgress] =
+    useState<VoiceInstallationProgress | null>(null);
+  const [voiceInstallationBusy, setVoiceInstallationBusy] = useState(false);
   const attachEpoch = useRef(0);
   const snapshotRef = useRef<GameSnapshot | null>(null);
   const completedSequences = useRef(new Set<string>());
@@ -754,6 +788,25 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
     return () => {
       mounted = false;
       removeRuntimeFailureListener();
+    };
+  }, []);
+
+  useEffect(() => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop) return;
+    let mounted = true;
+    const removeProgressListener = desktop.voice.onInstallationProgress((progress) => {
+      if (mounted) setVoiceInstallationProgress(progress);
+    });
+    void desktop.voice
+      .getInstallationState()
+      .then((state) => {
+        if (mounted) setVoiceInstallationState(state);
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+      removeProgressListener();
     };
   }, []);
 
@@ -1084,6 +1137,36 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
     }
   };
 
+  const installHostVoice = async () => {
+    const desktop = window.youreAllWrongDesktop;
+    if (!desktop || voiceInstallationBusy) return;
+    setVoiceInstallationBusy(true);
+    setVoiceInstallationProgress({
+      stage: 'validating',
+      message: 'Validating the packaged host installer…',
+    });
+    try {
+      const result = await desktop.voice.install();
+      if (!result.ok) {
+        setVoiceInstallationProgress(null);
+        setError(result.message);
+        const state = await desktop.voice.getInstallationState();
+        setVoiceInstallationState(state);
+        return;
+      }
+      setVoiceInstallationState(result.state);
+      setVoiceInstallationProgress({
+        stage: 'ready',
+        message: 'Neural host verified. Restarting the room…',
+      });
+    } catch (reason) {
+      setVoiceInstallationProgress(null);
+      setError(reason instanceof Error ? reason.message : 'The neural host setup could not start.');
+    } finally {
+      setVoiceInstallationBusy(false);
+    }
+  };
+
   return (
     <main
       className={`host host--${snapshot.phase} host--visual-${questionVisual}`}
@@ -1125,7 +1208,13 @@ function HostScreen({ secrets }: { secrets: ReturnType<typeof readFragmentSecret
                 No controller app. Same Wi-Fi. Four arrows and a legally unreasonable amount of
                 confidence.
               </p>
-              <VoicePreflightPanel {...voice.progress} />
+              <VoicePreflightPanel
+                progress={voice.progress}
+                installationState={voiceInstallationState}
+                installationProgress={voiceInstallationProgress}
+                installationBusy={voiceInstallationBusy}
+                onInstall={() => void installHostVoice()}
+              />
               <EpisodeLibraryPanel
                 active={
                   episodeLibrary ?? {
